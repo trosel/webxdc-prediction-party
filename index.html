@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Prediction Party</title>
+  <style>
+    :root {
+      --bg:#f4f5f7; --card:#fff; --card-2:#f0f1f4; --text:#14161a; --muted:#6b7280;
+      --line:#e3e5ea; --accent:#6d28d9; --accent-soft:#ede9fe; --good:#16a34a;
+      --good-soft:#dcfce7; --bad:#dc2626; --bad-soft:#fee2e2; --warn:#d97706;
+      --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04); --radius:14px;
+    }
+    @media (prefers-color-scheme:dark){
+      :root{
+        --bg:#0f1115; --card:#1a1d23; --card-2:#23272f; --text:#f3f4f6; --muted:#9aa1ad;
+        --line:#2c313a; --accent:#a78bfa; --accent-soft:#2a2440; --good:#4ade80;
+        --good-soft:#14331f; --bad:#f87171; --bad-soft:#3a1a1a; --warn:#fbbf24;
+        --shadow:0 1px 3px rgba(0,0,0,.4);
+      }
+    }
+    *{box-sizing:border-box;}
+    [hidden]{display:none !important;}
+    html,body{margin:0;padding:0;}
+    body{
+      background:var(--bg); color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      font-size:16px; line-height:1.45; -webkit-text-size-adjust:100%;
+      padding-bottom:env(safe-area-inset-bottom);
+    }
+    #topbar{
+      position:sticky; top:0; z-index:10; background:var(--card);
+      border-bottom:1px solid var(--line);
+      padding:12px 16px 0; padding-top:calc(12px + env(safe-area-inset-top));
+    }
+    #topbar.no-tabs{padding-bottom:14px;}
+    .title-wrap{display:flex; align-items:center; gap:12px;}
+    .presence{display:flex; align-items:center; margin-left:auto; padding-left:8px;}
+    .presence:empty{display:none;}
+    .pavatar{
+      width:27px; height:27px; border-radius:50%;
+      display:inline-flex; align-items:center; justify-content:center;
+      color:#fff; font-size:11px; font-weight:700;
+      margin-left:-7px; border:2px solid var(--card); flex:0 0 auto;
+    }
+    .pavatar:first-child{margin-left:0;}
+    .pavatar.me{box-shadow:0 0 0 2px var(--accent);}
+    .pavatar.more{background:var(--card-2); color:var(--muted);}
+    .season-emoji{font-size:30px; line-height:1;}
+    .titles{min-width:0;}
+    #season-title{font-size:19px; margin:0; font-weight:700;}
+    .sub{margin:2px 0 0; color:var(--muted); font-size:13px;}
+    .tabs{display:flex; gap:4px; margin-top:12px;}
+    .tab{
+      flex:1; border:none; background:none; color:var(--muted); font:inherit;
+      font-weight:600; font-size:14px; padding:10px 4px;
+      border-bottom:2px solid transparent; cursor:pointer;
+    }
+    .tab.active{color:var(--accent); border-bottom-color:var(--accent);}
+    #view{padding:16px; max-width:680px; margin:0 auto;}
+    .card{
+      background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+      box-shadow:var(--shadow); padding:16px; margin-bottom:14px;
+    }
+    .card h2{font-size:16px; margin:0 0 10px;}
+    .section-label{
+      font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted);
+      font-weight:700; margin:22px 4px 8px;
+    }
+    .section-label:first-child{margin-top:0;}
+    .round-head{cursor:pointer; user-select:none;}
+    .round-head .chev{color:var(--muted); font-size:11px;}
+    .round-head.collapsed{
+      display:flex; align-items:center; gap:8px;
+      background:var(--card); border:1px solid var(--line); border-radius:10px;
+      padding:13px 14px; margin:0 0 14px;
+      text-transform:none; letter-spacing:0; color:var(--text); font-size:14px; font-weight:700;
+    }
+    .round-head .round-summary{margin-left:auto; font-weight:600; color:var(--muted); font-size:12px; text-transform:none; letter-spacing:0;}
+    button{font-family:inherit;}
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center; gap:6px;
+      border:1px solid var(--line); background:var(--card-2); color:var(--text);
+      font-weight:600; font-size:14px; padding:9px 14px; border-radius:10px; cursor:pointer;
+    }
+    .btn:active{transform:translateY(1px);}
+    .btn-primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+    .btn-ghost{background:transparent;}
+    .btn-danger{color:var(--bad); border-color:var(--bad); background:transparent;}
+    .btn-dangerfill{background:var(--bad); border-color:var(--bad); color:#fff;}
+    .modal-error{color:var(--bad); font-weight:600; font-size:13px; margin:10px 0 0; min-height:1px;}
+    .modal-error:empty{margin:0;}
+    .btn-sm{padding:6px 10px; font-size:13px; border-radius:8px;}
+    .btn-block{width:100%;}
+    .btn-row{display:flex; gap:8px; flex-wrap:wrap;}
+    .btn:disabled{opacity:.5; cursor:not-allowed;}
+    label.field{display:block; margin-bottom:12px;}
+    label.field>span{display:block; font-size:13px; font-weight:600; color:var(--muted); margin-bottom:5px;}
+    input[type=text],input[type=number],select,textarea{
+      width:100%; font:inherit; padding:10px 12px; border:1px solid var(--line);
+      border-radius:10px; background:var(--bg); color:var(--text);
+    }
+    textarea{resize:vertical; min-height:48px;}
+    .inline{display:flex; gap:8px; align-items:center;}
+    .hint{font-size:12px; color:var(--muted); margin:4px 0 0;}
+    .chip{display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700; padding:3px 9px; border-radius:999px;}
+    .chip-open{background:var(--accent-soft); color:var(--accent);}
+    .chip-locked{background:var(--card-2); color:var(--muted);}
+    .chip-resolved{background:var(--good-soft); color:var(--good);}
+    .pts{font-size:12px; font-weight:700; color:var(--warn);}
+    .q-head{display:flex; justify-content:space-between; gap:10px; align-items:flex-start;}
+    .q-prompt{font-size:16px; font-weight:600; margin:0;}
+    .q-meta{display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;}
+    .opts{margin-top:12px; display:grid; gap:8px;}
+    .opt{
+      display:flex; align-items:center; gap:10px; padding:11px 12px;
+      border:1px solid var(--line); border-radius:10px; cursor:pointer; background:var(--bg);
+    }
+    .opt input{margin:0; width:18px; height:18px; accent-color:var(--accent);}
+    .opt.selected{border-color:var(--accent); background:var(--accent-soft);}
+    .opt.correct{border-color:var(--good); background:var(--good-soft);}
+    .opt.opt-static{cursor:default;}
+    .opt.opt-disabled{opacity:.45; cursor:not-allowed;}
+    .opt .opt-label{flex:1;}
+    .opt .opt-emoji{font-size:18px;}
+    .opt .tally{font-size:12px; color:var(--muted); font-weight:600;}
+    .rank-badge{
+      flex:0 0 auto; width:24px; height:24px; border-radius:50%;
+      display:inline-flex; align-items:center; justify-content:center;
+      font-size:13px; font-weight:800; background:var(--accent); color:#fff;
+    }
+    .rank-badge.rb-empty{background:transparent; border:1.5px dashed var(--line);}
+    .pick-row .what .badge-correct,.pick-row .what .badge-wrong{font-weight:600;}
+    .save-note{font-size:12px; color:var(--good); margin-top:8px; font-weight:600;}
+    .save-note.muted{color:var(--muted); font-weight:500;}
+    .picks{margin-top:12px; display:grid; gap:6px;}
+    .pick-row{display:flex; align-items:center; gap:8px; font-size:14px;}
+    .pick-row .who{font-weight:600;}
+    .pick-row .what{color:var(--muted);}
+    .pick-row.me .who{color:var(--accent);}
+    .badge-correct{color:var(--good); font-weight:700;}
+    .badge-wrong{color:var(--bad); font-weight:700;}
+    .badge-near{color:var(--warn); font-weight:700;}
+    .pick-pts{margin-left:auto; font-weight:700;}
+    .lb-row{display:flex; align-items:center; gap:12px; padding:12px 14px; border-bottom:1px solid var(--line);}
+    .lb-row:last-child{border-bottom:none;}
+    .lb-rank{font-size:18px; font-weight:800; width:30px; text-align:center; color:var(--muted);}
+    .lb-rank.top{color:var(--warn);}
+    .lb-name{flex:1; font-weight:600;}
+    .lb-row.me .lb-name{color:var(--accent);}
+    .lb-stats{text-align:right;}
+    .lb-pts{font-size:18px; font-weight:800;}
+    .lb-sub{font-size:12px; color:var(--muted);}
+    .roster-row{display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);}
+    .roster-row:last-child{border-bottom:none;}
+    .roster-row.out{opacity:.55;}
+    .roster-row .r-name{flex:1; font-weight:600;}
+    .roster-row .r-name.out{text-decoration:line-through;}
+    .roster-emoji{font-size:20px; width:26px; text-align:center;}
+    .empty{text-align:center; color:var(--muted); padding:40px 16px;}
+    .empty .big{font-size:40px; margin-bottom:8px;}
+    .note{background:var(--card-2); border-radius:10px; padding:12px; font-size:13px; color:var(--muted);}
+    .center{text-align:center;}
+    .spacer{height:8px;}
+    #modal-root:empty{display:none;}
+    .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:flex-end; justify-content:center; z-index:100;}
+    .modal{
+      background:var(--card); width:100%; max-width:680px; border-radius:18px 18px 0 0;
+      max-height:92vh; overflow-y:auto; padding:18px 16px calc(18px + env(safe-area-inset-bottom));
+      box-shadow:0 -4px 24px rgba(0,0,0,.25);
+    }
+    @media (min-width:700px){ .modal-backdrop{align-items:center;} .modal{border-radius:18px;} }
+    .modal h2{margin:0 0 14px; font-size:18px;}
+    .opt-edit-row{display:flex; gap:8px; align-items:center; margin-bottom:8px;}
+    .opt-edit-row .em{width:56px; text-align:center;}
+    .opt-edit-row .lbl{flex:1;}
+    .modal-actions{display:flex; gap:8px; margin-top:18px;}
+    .modal-actions .btn{flex:1;}
+    .type-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:4px;}
+    .type-card{border:1px solid var(--line); background:var(--bg); border-radius:12px; padding:12px; cursor:pointer; text-align:left;}
+    .type-card.active{border-color:var(--accent); background:var(--accent-soft);}
+    .type-card .pe{font-size:24px;}
+    .type-card .pn{font-weight:700; font-size:14px; margin-top:4px;}
+  </style>
+</head>
+<body>
+  <header id="topbar">
+    <div class="title-wrap">
+      <span id="season-emoji" class="season-emoji"></span>
+      <div class="titles">
+        <h1 id="season-title">Prediction Party</h1>
+        <p id="season-sub" class="sub"></p>
+      </div>
+      <div id="presence" class="presence" title=""></div>
+    </div>
+    <nav id="tabs" class="tabs" hidden>
+      <button class="tab" data-tab="predict">Predict</button>
+      <button class="tab" data-tab="board">Leaderboard</button>
+      <button class="tab" data-tab="manage" hidden>Manage</button>
+    </nav>
+  </header>
+
+  <main id="view"></main>
+  <div id="modal-root"></div>
+
+  <!-- Provided by the Delta Chat runtime in production (Delta injects its own
+       webxdc.js regardless of the package). The webxdc.js bundled in this repo
+       is a dev-only simulator for opening index.html in a plain browser; it is
+       NOT included in the .xdc package. -->
+  <script src="webxdc.js"></script>
+
+  <script>
+  /* Prediction Party — a webxdc prediction game for group chats.
+   *
+   * webxdc has no server: every device receives the same append-only log of
+   * updates and replays them through a reducer to build identical state. All
+   * mutations are events. Whoever initialises the season becomes the host;
+   * host-only events from non-hosts are ignored (soft enforcement). Built for
+   * high-trust groups, so predictions are shown openly — no hiding of picks.
+   */
+  (function () {
+    "use strict";
+    var wx = window.webxdc;
+
+    /* ---------------------------------------------------------------- *
+     * State                                                            *
+     * ---------------------------------------------------------------- */
+    function freshState() {
+      return {
+        season: { initialized:false, type:"series", show:"", season:"", emoji:"🎬", hosts:[], createdBy:null, createdAt:0 },
+        contestants: new Map(), // id -> {id,name,emoji,note,status,order}
+        questions: new Map(),   // id -> {id,prompt,kind,options,points,round,locked,lockTs,resolved,correct,order}
+        predictions: new Map(), // qid -> Map<addr,{choice:[optId],at,name}>
+        players: new Map()      // addr -> {addr,name}
+      };
+    }
+    var state = freshState();
+    var ui = { tab:"predict", caughtUp:false, modalOpen:false, pendingRender:false, savedFlash:{}, expandedRounds:{} };
+
+    /* ---------------------------------------------------------------- *
+     * Helpers                                                          *
+     * ---------------------------------------------------------------- */
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+        return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c];
+      });
+    }
+    function uid(p){ return p + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+    function isHost(addr){ return state.season.hosts.indexOf(addr) !== -1; }
+    function meIsHost(){ return isHost(wx.selfAddr); }
+    function isSeries(){ return state.season.type === "series"; }
+    function byOrder(a,b){ return (a.order||0) - (b.order||0); }
+    function playerName(addr) {
+      var p = state.players.get(addr);
+      if (p && p.name) return p.name;
+      return addr === wx.selfAddr ? (wx.selfName || addr) : addr;
+    }
+    function questionsArr(){ var a=[]; state.questions.forEach(function(q){ a.push(q); }); return a; }
+    function activeContestants() {
+      var a=[]; state.contestants.forEach(function(c){ if (c.status!=="out") a.push(c); }); return a.sort(byOrder);
+    }
+    function rankSlots(q) {
+      var n = q.rankN || 0;
+      if (n < 1 || n > q.options.length) n = q.options.length;
+      return n;
+    }
+    // Max selections for a "pick several" question; 0 means no limit.
+    function pickLimit(q) {
+      var n = q.pickN || 0;
+      return (n >= 1 && n <= q.options.length) ? n : 0;
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Reducer                                                          *
+     * ---------------------------------------------------------------- */
+    function reduce(p) {
+      if (!p || !p.type) return;
+      if (p.by) {
+        var rec = state.players.get(p.by) || { addr:p.by };
+        if (p.byName) rec.name = p.byName;
+        state.players.set(p.by, rec);
+      }
+      switch (p.type) {
+        case "season.init":
+          if (state.season.initialized) break;
+          state.season.initialized = true;
+          state.season.type = p.seasonType === "event" ? "event" : "series";
+          state.season.show = p.show || "Prediction Party";
+          state.season.season = p.season || "";
+          state.season.emoji = p.emoji || "🎬";
+          state.season.hosts = [p.by];
+          state.season.createdBy = p.by;
+          state.season.createdAt = p.at || 0;
+          break;
+        case "season.update":
+          if (!isHost(p.by)) break;
+          if (p.show != null) state.season.show = p.show;
+          if (p.season != null) state.season.season = p.season;
+          if (p.emoji != null) state.season.emoji = p.emoji;
+          break;
+        case "host.add":
+          if (!isHost(p.by) || !p.addr) break;
+          if (state.season.hosts.indexOf(p.addr) === -1) state.season.hosts.push(p.addr);
+          break;
+        case "host.remove":
+          if (!isHost(p.by) || !p.addr || p.addr === state.season.createdBy) break;
+          state.season.hosts = state.season.hosts.filter(function(a){ return a !== p.addr; });
+          break;
+        case "contestant.add":
+          if (!isHost(p.by) || !p.id) break;
+          state.contestants.set(p.id, { id:p.id, name:p.name||"?", emoji:p.emoji||"", note:p.note||"", status:"active", order:p.at||state.contestants.size });
+          break;
+        case "contestant.update": {
+          if (!isHost(p.by)) break;
+          var c = state.contestants.get(p.id); if (!c) break;
+          if (p.name != null) c.name = p.name;
+          if (p.emoji != null) c.emoji = p.emoji;
+          if (p.note != null) c.note = p.note;
+          if (p.status != null) c.status = p.status;
+          break;
+        }
+        case "contestant.remove":
+          if (!isHost(p.by)) break;
+          state.contestants.delete(p.id);
+          break;
+        case "question.add":
+          if (!isHost(p.by) || !p.id) break;
+          state.questions.set(p.id, {
+            id:p.id, prompt:p.prompt||"", kind:p.kind||"single",
+            options:normalizeOptions(p.kind, p.options), points:p.points||1,
+            rankN:p.rankN || 0, rankMode:(p.rankMode === "proximity" ? "proximity" : "exact"), pickN:p.pickN || 0, round:p.round||"", locked:false, lockTs:0, resolved:false, correct:[], order:p.at||state.questions.size
+          });
+          break;
+        case "question.update": {
+          if (!isHost(p.by)) break;
+          var q = state.questions.get(p.id); if (!q) break;
+          if (p.prompt != null) q.prompt = p.prompt;
+          if (p.kind != null) q.kind = p.kind;
+          if (p.options != null) q.options = normalizeOptions(q.kind, p.options);
+          if (p.points != null) q.points = p.points;
+          if (p.rankN != null) q.rankN = p.rankN;
+          if (p.rankMode != null) q.rankMode = p.rankMode;
+          if (p.pickN != null) q.pickN = p.pickN;
+          if (p.round != null) q.round = p.round;
+          break;
+        }
+        case "question.lock": {
+          if (!isHost(p.by)) break;
+          var ql = state.questions.get(p.id);
+          if (ql) { ql.locked = true; ql.lockTs = p.at || Date.now(); }
+          break;
+        }
+        case "question.unlock": {
+          if (!isHost(p.by)) break;
+          var qu = state.questions.get(p.id);
+          if (qu) { qu.locked = false; qu.lockTs = 0; }
+          break;
+        }
+        case "question.resolve": {
+          if (!isHost(p.by)) break;
+          var qr = state.questions.get(p.id);
+          if (qr) { qr.resolved = true; qr.correct = (p.correct||[]).slice(); qr.locked = true; if (!qr.lockTs) qr.lockTs = p.at; }
+          break;
+        }
+        case "question.unresolve": {
+          if (!isHost(p.by)) break;
+          var qn = state.questions.get(p.id);
+          if (qn) { qn.resolved = false; qn.correct = []; }
+          break;
+        }
+        case "question.delete":
+          if (!isHost(p.by)) break;
+          state.questions.delete(p.id);
+          state.predictions.delete(p.id);
+          break;
+        case "prediction.set": {
+          var qq = state.questions.get(p.qid); if (!qq) break;
+          if (qq.resolved) break;
+          if (qq.locked && qq.lockTs && p.at > qq.lockTs) break;
+          var m = state.predictions.get(p.qid);
+          if (!m) { m = new Map(); state.predictions.set(p.qid, m); }
+          var prev = m.get(p.by);
+          if (prev && prev.at > p.at) break;
+          m.set(p.by, { choice:(p.choice||[]).slice(), at:p.at||0, name:p.byName });
+          break;
+        }
+      }
+    }
+    function normalizeOptions(kind, options) {
+      if (kind === "boolean") return [{ id:"yes", label:"Yes", emoji:"✅" }, { id:"no", label:"No", emoji:"❌" }];
+      return (options || []).map(function (o, i) {
+        return { id:o.id||"o"+i, label:o.label||"", emoji:o.emoji||"" };
+      });
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Sending events                                                   *
+     * ---------------------------------------------------------------- */
+    function send(payload, opts) {
+      opts = opts || {};
+      payload.by = wx.selfAddr;
+      payload.byName = wx.selfName || wx.selfAddr;
+      payload.at = Date.now();
+      var update = { payload:payload };
+      if (opts.info) update.info = opts.info;
+      if (opts.summary) update.summary = opts.summary;
+      if (opts.notify) update.notify = (typeof opts.notify === "string") ? { "*": opts.notify } : opts.notify;
+      // Prefer values from this payload (e.g. season.init/update, whose changes
+      // aren't in state.season yet) so the very first update labels correctly.
+      var s = state.season;
+      var dEmoji = payload.emoji || s.emoji || "";
+      var dShow = (payload.show != null && payload.show !== "") ? payload.show : s.show;
+      var dSeason = (payload.season != null) ? payload.season : s.season;
+      update.document = dShow
+        ? ((dEmoji ? dEmoji + " " : "") + dShow + (dSeason ? " " + dSeason : ""))
+        : "Prediction Party";
+      wx.sendUpdate(update, opts.info || payload.type);
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Scoring                                                          *
+     * ---------------------------------------------------------------- */
+    function validPred(q, pred){ if (!q.locked || !q.lockTs) return true; return pred.at <= q.lockTs; }
+    // Points a ranked option earns for being placed at position i.
+    //  exact:     points if it's in its true slot, else 0
+    //  proximity: points minus how far it is from its true slot (floored at 0)
+    function rankSlotPoints(q, oid, i) {
+      var j = q.correct.indexOf(oid);
+      if (j === -1) return 0;
+      if (q.rankMode === "proximity") return Math.max(0, q.points - Math.abs(i - j));
+      return i === j ? q.points : 0;
+    }
+    function predScore(q, pred) {
+      if (q.kind === "rank") {
+        var rpts = 0, rh = 0;
+        for (var i = 0; i < pred.choice.length; i++) {
+          var sp = rankSlotPoints(q, pred.choice[i], i);
+          rpts += sp;
+          if (sp > 0) rh++;
+        }
+        return { hits:rh, points:rpts };
+      }
+      var hits = pred.choice.filter(function (o){ return q.correct.indexOf(o) !== -1; }).length;
+      if (q.kind === "multi") {
+        // Conviction scoring: each correct pick scores the points, and every
+        // option you select beyond the first costs 1 point (floored at 0).
+        var picks = pred.choice.length;
+        var pts = picks > 0 ? Math.max(0, q.points * hits - (picks - 1)) : 0;
+        return { hits:hits, points:pts };
+      }
+      return { hits:hits, points:q.points * hits };
+    }
+    function leaderboard() {
+      var rows = new Map();
+      state.players.forEach(function (p, addr){ rows.set(addr, { addr:addr, name:p.name||addr, points:0, correct:0, answered:0 }); });
+      state.questions.forEach(function (q, qid) {
+        if (!q.resolved) return;
+        var m = state.predictions.get(qid); if (!m) return;
+        m.forEach(function (pred, addr) {
+          if (!validPred(q, pred)) return;
+          var r = rows.get(addr);
+          if (!r) { r = { addr:addr, name:pred.name||addr, points:0, correct:0, answered:0 }; rows.set(addr, r); }
+          r.answered++;
+          var s = predScore(q, pred);
+          if (s.points > 0) { r.points += s.points; r.correct++; }
+        });
+      });
+      var arr = []; rows.forEach(function (r){ arr.push(r); });
+      arr.sort(function (a, b){ return b.points - a.points || b.correct - a.correct || a.name.localeCompare(b.name); });
+      return arr;
+    }
+    function resolvedCount(){ var n=0; state.questions.forEach(function(q){ if (q.resolved) n++; }); return n; }
+
+    /* Group questions by round (for series). Events use a single group. */
+    function groupedQuestions(sortByStatus) {
+      var byRound = {};
+      questionsArr().forEach(function (q) {
+        var key = isSeries() ? (q.round || "") : "";
+        (byRound[key] = byRound[key] || []).push(q);
+      });
+      var rank = { open:0, locked:1, resolved:2 };
+      function statusOf(q){ return q.resolved ? "resolved" : (q.locked ? "locked" : "open"); }
+      var keys = Object.keys(byRound).sort(function (a, b) {
+        function maxOrder(k){ return byRound[k].reduce(function (m, q){ return Math.max(m, q.order||0); }, 0); }
+        return maxOrder(b) - maxOrder(a); // most recent round first
+      });
+      return keys.map(function (k) {
+        var qs = byRound[k].slice();
+        qs.sort(sortByStatus
+          ? function (a, b){ return rank[statusOf(a)] - rank[statusOf(b)] || byOrder(a, b); }
+          : byOrder);
+        return { round:k, questions:qs };
+      });
+    }
+    function roundLabels() {
+      var seen = {}, out = [];
+      groupedQuestions(false).forEach(function (g){ if (g.round && !seen[g.round]) { seen[g.round] = 1; out.push(g.round); } });
+      return out;
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Rendering                                                        *
+     * ---------------------------------------------------------------- */
+    function render() {
+      if (ui.modalOpen) { ui.pendingRender = true; return; }
+      var s = state.season;
+      document.getElementById("season-emoji").textContent = s.initialized ? s.emoji : "🎉";
+      document.getElementById("season-title").textContent = s.initialized ? (s.show || "Prediction Party") : "Prediction Party";
+      var subEl = document.getElementById("season-sub");
+      subEl.textContent = s.initialized && s.season ? s.season : "";
+      subEl.hidden = !subEl.textContent;            // drop empty subtitle so the row centers cleanly
+      var tabsEl = document.getElementById("tabs");
+      var view = document.getElementById("view");
+      document.getElementById("topbar").classList.toggle("no-tabs", !s.initialized); // setup has no tabs → needs bottom padding
+      if (!s.initialized) { tabsEl.hidden = true; view.innerHTML = viewSetup(); return; }
+      tabsEl.hidden = false;
+      document.querySelector('[data-tab="manage"]').hidden = !meIsHost();
+      if (ui.tab === "manage" && !meIsHost()) ui.tab = "predict";
+      [].forEach.call(document.querySelectorAll(".tab"), function (t){ t.classList.toggle("active", t.getAttribute("data-tab") === ui.tab); });
+      if (ui.tab === "predict") view.innerHTML = viewPredict();
+      else if (ui.tab === "board") view.innerHTML = viewBoard();
+      else view.innerHTML = viewManage();
+    }
+    function emptyState(big, title, sub) {
+      return '<div class="empty"><div class="big">' + big + "</div><div><strong>" + esc(title) + "</strong></div><div>" + esc(sub) + "</div></div>";
+    }
+
+    /* ---- Setup --------------------------------------------------------- */
+    var setupType = "series";
+    function viewSetup() {
+      return '' +
+        '<div class="card">' +
+          "<h2>Start a prediction season</h2>" +
+          '<p class="hint">Set up your prediction game — you\'ll be the host. What kind is it?</p>' +
+          '<div class="type-grid">' +
+            typeCard("series", "📺", "Recurring series", "Plays out over several episodes or rounds") +
+            typeCard("event", "🎟️", "One-off event", "A single occasion with one or more categories") +
+          "</div>" +
+          '<div class="spacer"></div>' +
+          '<label class="field"><span>Show / event name</span>' +
+            '<input type="text" id="su-show" placeholder="Name of the show or event" /></label>' +
+          '<label class="field"><span>Season / edition (optional)</span>' +
+            '<input type="text" id="su-season" placeholder="e.g. Season 1, or 2026" /></label>' +
+          '<label class="field"><span>Emoji</span>' +
+            '<input type="text" id="su-emoji" value="' + (setupType === "event" ? "🏆" : "📺") + '" maxlength="4" style="width:90px" /></label>' +
+          '<button class="btn btn-primary btn-block" data-act="create-season">Start season 🎉</button>' +
+        "</div>";
+    }
+    function typeCard(t, emoji, name, desc) {
+      return '<button class="type-card' + (setupType === t ? " active" : "") + '" data-act="pick-type" data-t="' + t + '">' +
+        '<div class="pe">' + emoji + '</div><div class="pn">' + esc(name) + "</div>" +
+        '<div class="hint" style="margin:4px 0 0">' + esc(desc) + "</div></button>";
+    }
+
+    /* ---- Predict ------------------------------------------------------- */
+    // Header for a round group, with collapse handling. A fully-resolved round
+    // collapses (series only), except the top (most recent) round, which never
+    // does. Returns { collapsed, html }. Shared by the Predict and Manage tabs.
+    function roundHeaderInfo(g, idx) {
+      var allResolved = g.questions.every(function (q){ return q.resolved; });
+      var collapsible = allResolved && idx !== 0;
+      var collapsed = collapsible && !ui.expandedRounds[g.round || ""];
+      var html;
+      if (collapsed) {
+        html = '<div class="round-head collapsed" data-act="toggle-round" data-round="' + esc(g.round || "") + '">' +
+          '<span class="chev">▸</span><span>' + esc(g.round || "General") + "</span>" +
+          '<span class="round-summary">' + g.questions.length + " resolved · tap to review</span></div>";
+      } else if (collapsible) {
+        html = '<div class="section-label round-head" data-act="toggle-round" data-round="' + esc(g.round || "") + '"><span class="chev">▾</span> ' + esc(g.round || "General") + "</div>";
+      } else {
+        html = '<div class="section-label">' + esc(g.round || "General") + "</div>";
+      }
+      return { collapsed:collapsed, html:html };
+    }
+    // Render grouped questions for a tab. Events are a flat list (no headings,
+    // never collapsed); series groups get collapsible round headers.
+    function renderGroups(sortByStatus, cardFn) {
+      return groupedQuestions(sortByStatus).map(function (g, idx) {
+        if (!isSeries()) return g.questions.map(cardFn).join("");
+        var h = roundHeaderInfo(g, idx);
+        return h.collapsed ? h.html : h.html + g.questions.map(cardFn).join("");
+      }).join("");
+    }
+    function viewPredict() {
+      if (!state.questions.size) {
+        return emptyState("🔮", "No questions yet",
+          meIsHost() ? "Open Manage to add your first prediction." : "The host hasn't added any predictions yet.");
+      }
+      return renderGroups(true, questionCard);
+    }
+    function statusChip(q) {
+      if (q.resolved) return '<span class="chip chip-resolved">✔ Resolved</span>';
+      if (q.locked) return '<span class="chip chip-locked">🔒 Locked</span>';
+      return '<span class="chip chip-open">Open</span>';
+    }
+    function questionCard(q) {
+      var perEach = (q.kind === "multi" || q.kind === "rank") ? " each" : "";
+      var subhint = q.kind === "multi" ? (pickLimit(q) ? "up to " + pickLimit(q) + " · fewer = more" : "fewer picks = more")
+        : (q.kind === "rank" ? "rank " + rankSlots(q) + (q.rankMode === "proximity" ? " · closeness counts" : " in order") : "");
+      var head = '<div class="q-head"><p class="q-prompt">' + esc(q.prompt) + "</p></div>" +
+        '<div class="q-meta">' + statusChip(q) +
+        '<span class="pts">' + q.points + " pt" + (q.points === 1 ? "" : "s") + perEach + "</span>" +
+        (subhint ? '<span class="hint" style="margin:0">' + subhint + "</span>" : "") + "</div>";
+      return '<div class="card" data-qid="' + q.id + '">' + head + questionBody(q) + "</div>";
+    }
+    function questionBody(q) {
+      if (!q.options.length) return '<p class="hint" style="margin-top:12px">No options yet — the host needs to add some.</p>';
+      if (q.kind === "rank") return rankBody(q);
+      var m = state.predictions.get(q.id);
+      var mine = m && m.get(wx.selfAddr);
+      var mySel = mine ? mine.choice : [];
+      var optById = {}; q.options.forEach(function (o){ optById[o.id] = o; });
+      var open = !q.locked && !q.resolved;
+      var inputType = q.kind === "multi" ? "checkbox" : "radio";
+      var limit = q.kind === "multi" ? pickLimit(q) : 0;
+      var atLimit = limit && mySel.length >= limit;
+
+      var opts = q.options.map(function (o) {
+        var tally = 0;
+        if (m) m.forEach(function (pr){ if (validPred(q, pr) && pr.choice.indexOf(o.id) !== -1) tally++; });
+        var isCorrect = q.resolved && q.correct.indexOf(o.id) !== -1;
+        var sel = mySel.indexOf(o.id) !== -1;
+        var emoji = o.emoji ? '<span class="opt-emoji">' + esc(o.emoji) + "</span>" : "";
+        if (open) {
+          var disabled = atLimit && !sel ? " disabled" : "";
+          return '<label class="opt' + (sel ? " selected" : "") + (disabled ? " opt-disabled" : "") + '">' +
+            '<input type="' + inputType + '" name="q_' + q.id + '" value="' + o.id + '"' + (sel ? " checked" : "") + disabled + ' data-act="predict" data-qid="' + q.id + '" />' +
+            emoji + '<span class="opt-label">' + esc(o.label) + "</span><span class=\"tally\">" + tally + "</span></label>";
+        }
+        return '<div class="opt opt-static' + (isCorrect ? " correct" : "") + '">' +
+          emoji + '<span class="opt-label">' + esc(o.label) + (isCorrect ? " ✅" : "") + "</span><span class=\"tally\">" + tally + "</span></div>";
+      }).join("");
+
+      // Everyone's picks (high-trust group — shown openly).
+      var rows = [];
+      if (m) m.forEach(function (pred, addr){ if (validPred(q, pred) && pred.choice.length) rows.push({ addr:addr, pred:pred }); });
+      rows.sort(function (a, b){ return playerName(a.addr).localeCompare(playerName(b.addr)); });
+      var picks = rows.map(function (r) {
+        var labels = r.pred.choice.map(function (id){ return optById[id] ? optById[id].label : "?"; }).join(", ");
+        var me = r.addr === wx.selfAddr;
+        var tail = "";
+        if (q.resolved) {
+          var sc = predScore(q, r.pred);
+          tail = sc.points > 0 ? '<span class="pick-pts badge-correct">+' + sc.points + "</span>" : '<span class="pick-pts badge-wrong">0</span>';
+        }
+        return '<div class="pick-row' + (me ? " me" : "") + '"><span class="who">' + esc(playerName(r.addr)) + (me ? " (you)" : "") +
+          '</span><span class="what">' + esc(labels) + "</span>" + tail + "</div>";
+      }).join("");
+
+      var note = "";
+      if (open) {
+        if (ui.savedFlash[q.id]) note = '<div class="save-note">Saved ✓ — change anytime until it locks</div>';
+        else if (q.kind === "multi") note = '<div class="save-note muted">' + mySel.length + " selected" + (limit ? " (up to " + limit + ")" : "") +
+          " — fewer picks score more, so only add ones you're confident about.</div>";
+        else if (!mine) note = '<div class="save-note muted">Make your prediction. You can change it until it locks.</div>';
+      } else if (!q.resolved) {
+        note = '<p class="hint" style="margin-top:10px">🔒 Locked — waiting for the host to set the result.</p>';
+      } else if (!rows.length) {
+        note = '<p class="hint">No one predicted this one.</p>';
+      }
+
+      return '<div class="opts">' + opts + "</div>" + (picks ? '<div class="picks">' + picks + "</div>" : "") + note;
+    }
+
+    /* Ranking question: tap options in order; scored by exact-position matches. */
+    function rankBody(q) {
+      var m = state.predictions.get(q.id);
+      var mine = m && m.get(wx.selfAddr);
+      var myOrder = mine ? mine.choice.slice() : [];
+      var optById = {}; q.options.forEach(function (o){ optById[o.id] = o; });
+      var open = !q.locked && !q.resolved;
+      var n = rankSlots(q);
+      var html = "";
+
+      if (open) {
+        var posOf = {}; myOrder.forEach(function (id, i){ posOf[id] = i + 1; });
+        var optsHtml = q.options.map(function (o) {
+          var pos = posOf[o.id];
+          var badge = pos ? '<span class="rank-badge">' + pos + "</span>" : '<span class="rank-badge rb-empty"></span>';
+          var emoji = o.emoji ? '<span class="opt-emoji">' + esc(o.emoji) + "</span>" : "";
+          return '<div class="opt' + (pos ? " selected" : "") + '" data-act="rank-toggle" data-qid="' + q.id + '" data-oid="' + o.id + '">' +
+            badge + emoji + '<span class="opt-label">' + esc(o.label) + "</span></div>";
+        }).join("");
+        var note = ui.savedFlash[q.id]
+          ? '<div class="save-note">Saved ✓</div>'
+          : '<div class="save-note muted">Ranked ' + myOrder.length + "/" + n + ". Tap in order; tap again to remove. Change until it locks.</div>";
+        var clear = myOrder.length ? '<div class="btn-row" style="margin-top:8px"><button class="btn btn-sm" data-act="rank-clear" data-qid="' + q.id + '">Clear</button></div>' : "";
+        html = '<p class="hint" style="margin-top:8px">Tap ' + n + " in order — your 1st pick first.</p>" +
+          '<div class="opts">' + optsHtml + "</div>" + clear + note;
+      } else if (q.resolved) {
+        var trueHtml = q.correct.map(function (id, i) {
+          var o = optById[id];
+          return '<div class="opt opt-static correct"><span class="rank-badge">' + (i + 1) + "</span>" +
+            (o && o.emoji ? '<span class="opt-emoji">' + esc(o.emoji) + "</span>" : "") +
+            '<span class="opt-label">' + esc(o ? o.label : "?") + "</span></div>";
+        }).join("");
+        html = '<div class="section-label" style="margin:12px 4px 6px">Actual order</div><div class="opts">' + trueHtml + "</div>";
+      } else {
+        html = '<p class="hint" style="margin-top:10px">🔒 Locked — waiting for the host to set the order.</p>';
+      }
+
+      var rows = [];
+      if (m) m.forEach(function (pred, addr){ if (validPred(q, pred) && pred.choice.length) rows.push({ addr:addr, pred:pred }); });
+      rows.sort(function (a, b){ return playerName(a.addr).localeCompare(playerName(b.addr)); });
+      var picks = rows.map(function (r) {
+        var me = r.addr === wx.selfAddr;
+        var seq = r.pred.choice.map(function (id, i) {
+          var o = optById[id]; var lbl = o ? o.label : "?";
+          if (q.resolved) {
+            var exact = q.correct[i] === id;
+            var sp = rankSlotPoints(q, id, i);
+            var cls = exact ? "badge-correct" : (sp > 0 ? "badge-near" : "badge-wrong");
+            return '<span class="' + cls + '">' + esc(lbl) + "</span>";
+          }
+          return esc(lbl);
+        }).join(" › ");
+        var tail = "";
+        if (q.resolved) { var sc = predScore(q, r.pred); tail = sc.points > 0 ? '<span class="pick-pts badge-correct">+' + sc.points + "</span>" : '<span class="pick-pts badge-wrong">0</span>'; }
+        return '<div class="pick-row' + (me ? " me" : "") + '"><span class="who">' + esc(playerName(r.addr)) + (me ? " (you)" : "") +
+          '</span><span class="what">' + seq + "</span>" + tail + "</div>";
+      }).join("");
+
+      return html + (picks ? '<div class="picks">' + picks + "</div>" : "") +
+        (q.resolved && !rows.length ? '<p class="hint">No one ranked this one.</p>' : "");
+    }
+
+    /* ---- Leaderboard --------------------------------------------------- */
+    function viewBoard() {
+      var lb = leaderboard();
+      var done = resolvedCount(), total = state.questions.size;
+      var header = '<div class="note center">' + done + " of " + total + " question" + (total === 1 ? "" : "s") + ' resolved</div><div class="spacer"></div>';
+      if (!lb.length) return header + emptyState("🏆", "No scores yet", "Scores appear once questions are resolved.");
+      var rows = lb.map(function (r, i) {
+        var medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : (i + 1);
+        var me = r.addr === wx.selfAddr;
+        return '<div class="lb-row' + (me ? " me" : "") + '">' +
+          '<div class="lb-rank' + (i < 3 ? " top" : "") + '">' + medal + "</div>" +
+          '<div class="lb-name">' + esc(r.name) + (me ? " (you)" : "") + "</div>" +
+          '<div class="lb-stats"><div class="lb-pts">' + r.points + "</div>" +
+          '<div class="lb-sub">' + r.correct + "/" + r.answered + " correct</div></div></div>";
+      }).join("");
+      return header + '<div class="card" style="padding:4px 14px">' + rows + "</div>";
+    }
+
+    /* ---- Manage (host) ------------------------------------------------- */
+    function viewManage() {
+      if (!meIsHost()) {
+        return '<div class="note">Only the host can manage this season. Ask ' + esc(playerName(state.season.createdBy)) + " to add you as a co-host.</div>";
+      }
+      return seasonSection() + questionsSection() + rosterSection() + hostsSection();
+    }
+    function seasonSection() {
+      var kind = isSeries() ? "Recurring series" : "One-off event";
+      return '<div class="section-label">Season</div>' +
+        '<div class="card"><p class="hint" style="margin-top:0">Type: <strong>' + kind + "</strong></p>" +
+        '<div class="btn-row"><button class="btn btn-sm" data-act="edit-season">Edit name &amp; emoji</button></div></div>';
+    }
+    function questionsSection() {
+      var body = state.questions.size ? renderGroups(false, manageQuestionCard) : '<div class="note">No questions yet.</div>';
+      return '<div class="section-label">Questions</div>' +
+        '<button class="btn btn-primary btn-block" data-act="new-q">+ New question</button>' +
+        '<div class="spacer"></div>' + body;
+    }
+    function manageQuestionCard(q) {
+      var actions;
+      if (q.resolved) {
+        actions = '<button class="btn btn-sm" data-act="unresolve" data-id="' + q.id + '">Reopen result</button>' +
+          '<button class="btn btn-sm btn-danger" data-act="del-q" data-id="' + q.id + '">Delete</button>';
+      } else if (q.locked) {
+        actions = '<button class="btn btn-sm btn-primary" data-act="resolve" data-id="' + q.id + '">Set result</button>' +
+          '<button class="btn btn-sm" data-act="unlock" data-id="' + q.id + '">Unlock</button>';
+      } else {
+        actions = '<button class="btn btn-sm" data-act="edit-q" data-id="' + q.id + '">Edit</button>' +
+          '<button class="btn btn-sm" data-act="lock" data-id="' + q.id + '">Lock picks</button>' +
+          '<button class="btn btn-sm btn-danger" data-act="del-q" data-id="' + q.id + '">Delete</button>';
+      }
+      return '<div class="card"><div class="q-head"><p class="q-prompt">' + esc(q.prompt) + "</p>" + statusChip(q) + "</div>" +
+        '<div class="q-meta"><span class="pts">' + q.points + " pt" + (q.points === 1 ? "" : "s") + "</span>" +
+        '<span class="hint" style="margin:0">' + q.options.length + " options · " + esc(q.kind) + "</span></div>" +
+        '<div class="btn-row" style="margin-top:12px">' + actions + "</div></div>";
+    }
+    function rosterSection() {
+      var cs = []; state.contestants.forEach(function (c){ cs.push(c); }); cs.sort(byOrder);
+      var label = isSeries() ? "Contestants" : "Nominees / option pool";
+      var hint = isSeries()
+        ? 'An optional roster you can pull into question options with one tap. Mark people "out" as they\'re eliminated.'
+        : "An optional shared list of names you can pull into question options with one tap.";
+      var list = cs.map(function (c) {
+        var out = c.status === "out";
+        var outBtn = isSeries() ? '<button class="btn btn-sm" data-act="toggle-c" data-id="' + c.id + '">' + (out ? "Bring back" : "Mark out") + "</button>" : "";
+        return '<div class="roster-row' + (out ? " out" : "") + '">' +
+          '<span class="roster-emoji">' + (c.emoji ? esc(c.emoji) : "👤") + "</span>" +
+          '<span class="r-name' + (out ? " out" : "") + '">' + esc(c.name) + "</span>" +
+          outBtn +
+          '<button class="btn btn-sm" data-act="edit-c" data-id="' + c.id + '">Edit</button>' +
+          '<button class="btn btn-sm btn-danger" data-act="del-c" data-id="' + c.id + '">✕</button></div>';
+      }).join("");
+      return '<div class="section-label">' + label + "</div><div class=\"card\">" +
+        '<p class="hint" style="margin-top:0">' + hint + "</p>" +
+        (list || '<p class="hint">No one added yet.</p>') +
+        '<div class="spacer"></div><button class="btn btn-sm" data-act="new-c">+ Add</button></div>';
+    }
+    function hostsSection() {
+      var others = []; state.players.forEach(function (p, addr){ if (!isHost(addr)) others.push(addr); });
+      var hostList = state.season.hosts.map(function (addr) {
+        var canRemove = addr !== state.season.createdBy;
+        return '<div class="roster-row"><span class="roster-emoji">⭐</span>' +
+          '<span class="r-name">' + esc(playerName(addr)) + (addr === state.season.createdBy ? " (creator)" : "") + "</span>" +
+          (canRemove ? '<button class="btn btn-sm btn-danger" data-act="rm-host" data-addr="' + esc(addr) + '">Remove</button>' : "") + "</div>";
+      }).join("");
+      var addCtl = others.length
+        ? '<div class="inline" style="margin-top:10px"><select id="host-pick">' +
+            others.map(function (a){ return '<option value="' + esc(a) + '">' + esc(playerName(a)) + "</option>"; }).join("") +
+          '</select><button class="btn btn-sm" data-act="add-host">Add</button></div>'
+        : '<p class="hint">Co-hosts can be added once other members have opened the app.</p>';
+      return '<div class="section-label">Hosts</div><div class="card">' + hostList + addCtl + "</div>";
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Modals                                                           *
+     * ---------------------------------------------------------------- */
+    function openModal(html) {
+      ui.modalOpen = true;
+      document.getElementById("modal-root").innerHTML = '<div class="modal-backdrop" data-act="modal-backdrop"><div class="modal">' + html + "</div></div>";
+    }
+    function closeModal() {
+      ui.modalOpen = false;
+      pendingConfirm = null;
+      document.getElementById("modal-root").innerHTML = "";
+      ui.pendingRender = false;
+      render();
+    }
+    function modalActions(saveAct, label) {
+      return '<div class="modal-actions"><button class="btn btn-ghost" data-act="close-modal">Cancel</button>' +
+        '<button class="btn btn-primary" data-act="' + saveAct + '">' + (label || "Save") + "</button></div>";
+    }
+    // In-app confirm dialog. Native window.confirm/alert don't work in webxdc
+    // on iOS, so all confirmations and validation use modals/inline messages.
+    var pendingConfirm = null;
+    function confirmModal(o) {
+      pendingConfirm = o.onConfirm;
+      openModal("<h2>" + esc(o.title) + "</h2>" +
+        '<p class="hint" style="margin-top:0">' + esc(o.body || "") + "</p>" +
+        '<div class="modal-actions"><button class="btn btn-ghost" data-act="close-modal">Cancel</button>' +
+        '<button class="btn ' + (o.danger ? "btn-dangerfill" : "btn-primary") + '" data-act="confirm-yes">' + esc(o.confirmLabel || "Confirm") + "</button></div>");
+    }
+    function showModalError(msg) {
+      var e = document.getElementById("modal-error");
+      if (e) e.textContent = msg;
+    }
+    function editSeasonModal() {
+      var s = state.season;
+      openModal("<h2>Season settings</h2>" +
+        '<label class="field"><span>Show / event name</span><input type="text" id="m-show" value="' + esc(s.show) + '" /></label>' +
+        '<label class="field"><span>Season / edition</span><input type="text" id="m-season" value="' + esc(s.season) + '" /></label>' +
+        '<label class="field"><span>Emoji</span><input type="text" id="m-emoji" maxlength="4" style="width:90px" value="' + esc(s.emoji) + '" /></label>' +
+        modalActions("save-season"));
+    }
+
+    var editingQ = null;
+    var qDraftOptions = [];
+    function questionModal(q) {
+      editingQ = q || null;
+      var kind = q ? q.kind : "single";
+      var opts = q ? q.options.slice() : [{ id:uid("o"), label:"", emoji:"" }, { id:uid("o"), label:"", emoji:"" }];
+      qDraftOptions = opts.map(function (o){ return { id:o.id||uid("o"), label:o.label, emoji:o.emoji }; });
+      var rounds = roundLabels();
+      var defRound = q ? q.round : (rounds[0] || "");
+      var roundField = isSeries()
+        ? '<label class="field"><span>Round / episode</span>' +
+          '<input type="text" id="m-round" list="round-list" value="' + esc(defRound) + '" placeholder="e.g. Episode 4" />' +
+          '<datalist id="round-list">' + rounds.map(function (r){ return '<option value="' + esc(r) + '"></option>'; }).join("") + "</datalist>" +
+          '<p class="hint">Groups this question under an episode/round on the Predict tab.</p></label>'
+        : "";
+      openModal("<h2>" + (q ? "Edit" : "New") + " question</h2>" +
+        '<label class="field"><span>Prompt</span><textarea id="m-prompt" placeholder="Who will be voted out this week?">' + esc(q ? q.prompt : "") + "</textarea></label>" +
+        roundField +
+        '<label class="field"><span>Type</span><select id="m-kind">' +
+          '<option value="single"' + (kind === "single" ? " selected" : "") + ">Pick one</option>" +
+          '<option value="multi"' + (kind === "multi" ? " selected" : "") + ">Pick several (points per correct)</option>" +
+          '<option value="rank"' + (kind === "rank" ? " selected" : "") + ">Rank in order (points per correct slot)</option>" +
+          '<option value="boolean"' + (kind === "boolean" ? " selected" : "") + ">Yes / No</option></select></label>" +
+        '<label class="field"><span>Points</span><input type="number" id="m-points" min="1" max="99" value="' + (q ? q.points : 1) + '" style="width:100px" /></label>' +
+        '<label class="field" id="rankn-wrap"' + (kind === "rank" ? "" : ' style="display:none"') + '><span>How many to rank</span>' +
+          '<input type="number" id="m-rankn" min="1" max="50" value="' + (q && q.rankN ? q.rankN : "") + '" placeholder="all options" style="width:140px" />' +
+          '<p class="hint">e.g. 3 to predict the top 3 in order. Leave blank to rank every option.</p></label>' +
+        '<label class="field" id="rankmode-wrap"' + (kind === "rank" ? "" : ' style="display:none"') + '><span>Scoring</span>' +
+          '<select id="m-rankmode">' +
+            '<option value="exact"' + (q && q.rankMode === "proximity" ? "" : " selected") + ">Exact position</option>" +
+            '<option value="proximity"' + (q && q.rankMode === "proximity" ? " selected" : "") + ">Proximity (closeness counts)</option></select>" +
+          '<p class="hint"><strong>Exact:</strong> each slot placed in the right spot scores the full points. <strong>Proximity:</strong> a slot loses 1 point for every place it\'s off (min 0), so make the points <strong>at least one less than the number of places</strong> (5 places → 4+ points) so closeness counts all the way down — only the worst-possible spot scores 0. (Total for the question is points × how many slots you rank.)</p></label>' +
+        '<label class="field" id="pickn-wrap"' + (kind === "multi" ? "" : ' style="display:none"') + '><span>Pick cap (optional)</span>' +
+          '<input type="number" id="m-pickn" min="1" max="50" value="' + (q && q.pickN ? q.pickN : "") + '" placeholder="no limit" style="width:140px" />' +
+          '<p class="hint">Scoring rewards conviction: each correct pick scores the points, and every selection beyond the first costs 1 point. Tip: set a cap, then make the points <strong>one less than the cap</strong> — a confident single pick earns full points and a max-size spray earns 0, so hedging always costs you.</p></label>' +
+        '<div id="opts-wrap"' + (kind === "boolean" ? ' style="display:none"' : "") + '>' +
+          '<span class="section-label" style="margin-top:0">Options</span>' +
+          '<div id="opt-rows">' + qDraftOptions.map(optEditRow).join("") + "</div>" +
+          '<div class="btn-row"><button class="btn btn-sm" data-act="add-opt">+ Option</button>' +
+          (state.contestants.size ? '<button class="btn btn-sm" data-act="fill-roster">Fill from roster</button>' : "") + "</div></div>" +
+        modalActions("save-q"));
+    }
+    function optEditRow(o) {
+      return '<div class="opt-edit-row" data-oid="' + o.id + '">' +
+        '<input class="em" type="text" maxlength="3" placeholder="🙂" value="' + esc(o.emoji || "") + '" data-opt-emoji="' + o.id + '" />' +
+        '<input class="lbl" type="text" placeholder="Option label" value="' + esc(o.label || "") + '" data-opt-label="' + o.id + '" />' +
+        '<button class="btn btn-sm btn-danger" data-act="rm-opt" data-oid="' + o.id + '">✕</button></div>';
+    }
+    function syncDraftOptionsFromDom() {
+      var wrap = document.getElementById("opt-rows"); if (!wrap) return;
+      qDraftOptions = [].map.call(wrap.querySelectorAll(".opt-edit-row"), function (row) {
+        var id = row.getAttribute("data-oid");
+        return { id:id, label:(row.querySelector("[data-opt-label]")||{}).value || "", emoji:(row.querySelector("[data-opt-emoji]")||{}).value || "" };
+      });
+    }
+    function contestantModal(c) {
+      openModal("<h2>" + (c ? "Edit" : "Add") + "</h2>" +
+        '<input type="hidden" id="m-cid" value="' + (c ? c.id : "") + '" />' +
+        '<label class="field"><span>Name</span><input type="text" id="m-cname" value="' + esc(c ? c.name : "") + '" /></label>' +
+        '<label class="field"><span>Emoji</span><input type="text" id="m-cemoji" maxlength="4" style="width:90px" value="' + esc(c ? c.emoji : "") + '" /></label>' +
+        modalActions("save-c"));
+    }
+    var resolveOrder = [];
+    function resolveRankHtml(q) {
+      var optById = {}; q.options.forEach(function (o){ optById[o.id] = o; });
+      var n = rankSlots(q);
+      var posOf = {}; resolveOrder.forEach(function (id, i){ posOf[id] = i + 1; });
+      var opts = q.options.map(function (o) {
+        var pos = posOf[o.id];
+        var badge = pos ? '<span class="rank-badge">' + pos + "</span>" : '<span class="rank-badge rb-empty"></span>';
+        var emoji = o.emoji ? '<span class="opt-emoji">' + esc(o.emoji) + "</span>" : "";
+        return '<div class="opt' + (pos ? " selected" : "") + '" data-act="rank-resolve-toggle" data-oid="' + o.id + '">' +
+          badge + emoji + '<span class="opt-label">' + esc(o.label) + "</span></div>";
+      }).join("");
+      var clear = resolveOrder.length ? '<div class="btn-row" style="margin-top:8px"><button class="btn btn-sm" data-act="rank-resolve-clear">Clear</button></div>' : "";
+      return "<h2>Set the actual order</h2>" +
+        '<p class="hint" style="margin-top:0">' + esc(q.prompt) + "</p>" +
+        '<p class="hint">Tap the options in the real order — 1st place first (' + n + " total).</p>" +
+        '<div class="opts">' + opts + "</div>" + clear +
+        '<p class="modal-error" id="modal-error"></p>' +
+        modalActions("save-resolve", "Publish result");
+    }
+    function refreshResolveRank() {
+      if (!editingQ) return;
+      var modal = document.querySelector("#modal-root .modal");
+      if (modal) modal.innerHTML = resolveRankHtml(editingQ);
+    }
+    function resolveModal(q) {
+      editingQ = q;
+      if (q.kind === "rank") { resolveOrder = q.correct.slice(); openModal(resolveRankHtml(q)); return; }
+      var inputType = q.kind === "multi" ? "checkbox" : "radio";
+      var opts = q.options.map(function (o) {
+        var checked = q.correct.indexOf(o.id) !== -1;
+        return '<label class="opt' + (checked ? " selected" : "") + '">' +
+          '<input type="' + inputType + '" name="resolve" value="' + o.id + '"' + (checked ? " checked" : "") + " data-resolve-opt />" +
+          (o.emoji ? '<span class="opt-emoji">' + esc(o.emoji) + "</span>" : "") +
+          '<span class="opt-label">' + esc(o.label) + "</span></label>";
+      }).join("");
+      openModal("<h2>Set the result</h2>" +
+        '<p class="hint" style="margin-top:0">' + esc(q.prompt) + "</p>" +
+        '<div class="opts">' + opts + "</div>" +
+        '<p class="hint">' + (q.kind === "multi" ? "Tick every correct option." : "Pick the correct answer.") + "</p>" +
+        '<p class="modal-error" id="modal-error"></p>' +
+        modalActions("save-resolve", "Publish result"));
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Actions                                                          *
+     * ---------------------------------------------------------------- */
+    function val(id){ var el = document.getElementById(id); return el ? el.value.trim() : ""; }
+
+    function createSeason() {
+      var show = val("su-show");
+      if (!show) { var e = document.getElementById("su-show"); if (e) e.focus(); return; }
+      ui.tab = "manage"; // set before send: the sim renders synchronously inside send()
+      send({ type:"season.init", seasonType:setupType, show:show, season:val("su-season"), emoji:val("su-emoji") || (setupType === "event" ? "🏆" : "📺") },
+        { info:"🎉 Prediction season started: " + show + (val("su-season") ? " — " + val("su-season") : "") });
+    }
+    function saveQuestion() {
+      syncDraftOptionsFromDom();
+      var prompt = val("m-prompt");
+      var kind = val("m-kind") || "single";
+      var points = Math.max(1, parseInt(val("m-points"), 10) || 1);
+      var round = isSeries() ? val("m-round") : "";
+      if (!prompt) { document.getElementById("m-prompt").focus(); return; }
+      var options = kind === "boolean" ? [] : qDraftOptions
+        .filter(function (o){ return o.label && o.label.trim(); })
+        .map(function (o){ return { id:o.id, label:o.label.trim(), emoji:(o.emoji||"").trim() }; });
+      var rankN = kind === "rank" ? (parseInt(val("m-rankn"), 10) || 0) : 0;
+      var rankMode = kind === "rank" ? (val("m-rankmode") || "exact") : "exact";
+      var pickN = kind === "multi" ? (parseInt(val("m-pickn"), 10) || 0) : 0;
+      if (editingQ) send({ type:"question.update", id:editingQ.id, prompt:prompt, kind:kind, points:points, options:options, rankN:rankN, rankMode:rankMode, pickN:pickN, round:round });
+      else send({ type:"question.add", id:uid("q"), prompt:prompt, kind:kind, points:points, options:options, rankN:rankN, rankMode:rankMode, pickN:pickN, round:round }, { info:"📊 New prediction: " + prompt });
+      editingQ = null; closeModal();
+    }
+    function saveContestant() {
+      var name = val("m-cname"), emoji = val("m-cemoji"), cid = val("m-cid");
+      if (!name) { document.getElementById("m-cname").focus(); return; }
+      if (cid) send({ type:"contestant.update", id:cid, name:name, emoji:emoji });
+      else send({ type:"contestant.add", id:uid("c"), name:name, emoji:emoji });
+      closeModal();
+    }
+    function saveResolve() {
+      if (!editingQ) return;
+      if (editingQ.kind === "rank") {
+        var n = rankSlots(editingQ);
+        if (resolveOrder.length !== n) { showModalError("Set the full order — tap " + n + " option" + (n === 1 ? "" : "s") + " in order."); return; }
+        var byId = {}; editingQ.options.forEach(function (o){ byId[o.id] = o; });
+        var rlabels = resolveOrder.map(function (id){ return byId[id] ? byId[id].label : "?"; }).join(" › ");
+        send({ type:"question.resolve", id:editingQ.id, correct:resolveOrder.slice() }, { info:"✅ Result — " + editingQ.prompt + ": " + rlabels });
+        editingQ = null; closeModal(); return;
+      }
+      var correct = [].slice.call(document.querySelectorAll("[data-resolve-opt]"))
+        .filter(function (i){ return i.checked; }).map(function (i){ return i.value; });
+      if (!correct.length) { showModalError("Pick at least one correct option."); return; }
+      var labels = editingQ.options.filter(function (o){ return correct.indexOf(o.id) !== -1; }).map(function (o){ return o.label; }).join(", ");
+      send({ type:"question.resolve", id:editingQ.id, correct:correct }, { info:"✅ Result — " + editingQ.prompt + ": " + labels });
+      editingQ = null; closeModal();
+    }
+
+    document.addEventListener("click", function (e) {
+      var tab = e.target.closest && e.target.closest(".tab");
+      if (tab) { ui.tab = tab.getAttribute("data-tab"); render(); return; }
+      var el = e.target.closest && e.target.closest("[data-act]");
+      if (!el) return;
+      var act = el.getAttribute("data-act");
+      var id = el.getAttribute("data-id");
+      switch (act) {
+        case "pick-type": setupType = el.getAttribute("data-t"); render(); break;
+        case "toggle-round": { var r = el.getAttribute("data-round") || ""; ui.expandedRounds[r] = !ui.expandedRounds[r]; render(); break; }
+        case "create-season": createSeason(); break;
+        case "predict": return;
+        case "edit-season": editSeasonModal(); break;
+        case "save-season": send({ type:"season.update", show:val("m-show"), season:val("m-season"), emoji:val("m-emoji") || "🎬" }); closeModal(); break;
+        case "new-q": questionModal(null); break;
+        case "edit-q": questionModal(state.questions.get(id)); break;
+        case "add-opt": {
+          syncDraftOptionsFromDom();
+          qDraftOptions.push({ id:uid("o"), label:"", emoji:"" });
+          document.getElementById("opt-rows").insertAdjacentHTML("beforeend", optEditRow(qDraftOptions[qDraftOptions.length - 1]));
+          break;
+        }
+        case "rm-opt": {
+          syncDraftOptionsFromDom();
+          var oid = el.getAttribute("data-oid");
+          qDraftOptions = qDraftOptions.filter(function (o){ return o.id !== oid; });
+          var row = el.closest(".opt-edit-row"); if (row) row.remove();
+          break;
+        }
+        case "fill-roster": {
+          syncDraftOptionsFromDom();
+          var existing = {};
+          qDraftOptions.forEach(function (o){ if (o.label) existing[o.label.toLowerCase()] = true; });
+          activeContestants().forEach(function (c){ if (!existing[c.name.toLowerCase()]) qDraftOptions.push({ id:uid("o"), label:c.name, emoji:c.emoji || "" }); });
+          qDraftOptions = qDraftOptions.filter(function (o){ return o.label && o.label.trim(); });
+          document.getElementById("opt-rows").innerHTML = qDraftOptions.map(optEditRow).join("");
+          break;
+        }
+        case "save-q": saveQuestion(); break;
+        case "rank-toggle": {
+          var rq = state.questions.get(el.getAttribute("data-qid"));
+          if (!rq || rq.locked || rq.resolved) break;
+          var roid = el.getAttribute("data-oid");
+          var rm = state.predictions.get(rq.id);
+          var rmine = rm && rm.get(wx.selfAddr);
+          var order = rmine ? rmine.choice.slice() : [];
+          var ri = order.indexOf(roid);
+          if (ri !== -1) order.splice(ri, 1);
+          else { if (order.length >= rankSlots(rq)) break; order.push(roid); }
+          send({ type:"prediction.set", qid:rq.id, choice:order });
+          ui.savedFlash[rq.id] = true;
+          setTimeout(function (){ ui.savedFlash[rq.id] = false; render(); }, 1600);
+          render();
+          break;
+        }
+        case "rank-clear": {
+          var rcq = state.questions.get(el.getAttribute("data-qid"));
+          if (!rcq || rcq.locked || rcq.resolved) break;
+          send({ type:"prediction.set", qid:rcq.id, choice:[] });
+          render();
+          break;
+        }
+        case "rank-resolve-toggle": {
+          if (!editingQ) break;
+          var rroid = el.getAttribute("data-oid");
+          var rj = resolveOrder.indexOf(rroid);
+          if (rj !== -1) resolveOrder.splice(rj, 1);
+          else { if (resolveOrder.length >= rankSlots(editingQ)) break; resolveOrder.push(rroid); }
+          refreshResolveRank();
+          break;
+        }
+        case "rank-resolve-clear": resolveOrder = []; refreshResolveRank(); break;
+        case "lock": {
+          var ql = state.questions.get(id);
+          if (ql) confirmModal({ title:"Lock picks?", body:'No more predictions will be accepted for "' + ql.prompt + '".', confirmLabel:"Lock picks",
+            onConfirm:function (){ send({ type:"question.lock", id:id }, { info:"🔒 Locked: " + ql.prompt }); } });
+          break;
+        }
+        case "confirm-yes": { var fn = pendingConfirm; pendingConfirm = null; closeModal(); if (fn) fn(); break; }
+        case "unlock": send({ type:"question.unlock", id:id }); break;
+        case "resolve": resolveModal(state.questions.get(id)); break;
+        case "save-resolve": saveResolve(); break;
+        case "unresolve": send({ type:"question.unresolve", id:id }); break;
+        case "del-q": confirmModal({ title:"Delete question?", body:"Predictions and points for it will be removed.", confirmLabel:"Delete", danger:true,
+          onConfirm:function (){ send({ type:"question.delete", id:id }); } }); break;
+        case "new-c": contestantModal(null); break;
+        case "edit-c": contestantModal(state.contestants.get(id)); break;
+        case "save-c": saveContestant(); break;
+        case "toggle-c": { var c = state.contestants.get(id); if (c) send({ type:"contestant.update", id:id, status:c.status === "out" ? "active" : "out" }); break; }
+        case "del-c": confirmModal({ title:"Remove from roster?", body:"This won't change options on questions you already created.", confirmLabel:"Remove", danger:true,
+          onConfirm:function (){ send({ type:"contestant.remove", id:id }); } }); break;
+        case "add-host": { var sel = document.getElementById("host-pick"); if (sel && sel.value) send({ type:"host.add", addr:sel.value }); break; }
+        case "rm-host": send({ type:"host.remove", addr:el.getAttribute("data-addr") }); break;
+        case "close-modal": closeModal(); break;
+        case "modal-backdrop": if (e.target === el) closeModal(); break;
+      }
+    });
+
+    document.addEventListener("change", function (e) {
+      var inp = e.target.closest && e.target.closest('[data-act="predict"]');
+      if (inp) {
+        var qid = inp.getAttribute("data-qid");
+        var q = state.questions.get(qid);
+        if (!q || q.locked || q.resolved) return;
+        var checked = [].slice.call(document.querySelectorAll('input[name="q_' + qid + '"]'))
+          .filter(function (i){ return i.checked; }).map(function (i){ return i.value; });
+        var lim = q.kind === "multi" ? pickLimit(q) : 0;
+        if (lim && checked.length > lim) { inp.checked = false; return; } // enforce the cap
+        send({ type:"prediction.set", qid:qid, choice:checked });
+        ui.savedFlash[qid] = true;
+        setTimeout(function (){ ui.savedFlash[qid] = false; render(); }, 1600);
+        render();
+        return;
+      }
+      if (e.target && e.target.id === "m-kind") {
+        var wrap = document.getElementById("opts-wrap");
+        if (wrap) wrap.style.display = e.target.value === "boolean" ? "none" : "";
+        var rw = document.getElementById("rankn-wrap");
+        if (rw) rw.style.display = e.target.value === "rank" ? "" : "none";
+        var rmw = document.getElementById("rankmode-wrap");
+        if (rmw) rmw.style.display = e.target.value === "rank" ? "" : "none";
+        var pw = document.getElementById("pickn-wrap");
+        if (pw) pw.style.display = e.target.value === "multi" ? "" : "none";
+      }
+      var optInput = e.target.closest && e.target.closest('.opts input, [data-resolve-opt]');
+      if (optInput) {
+        var group = optInput.closest(".opts") || optInput.closest(".modal");
+        if (group) [].forEach.call(group.querySelectorAll(".opt"), function (lbl){ var i = lbl.querySelector("input"); if (i) lbl.classList.toggle("selected", i.checked); });
+      }
+    });
+
+    /* ---------------------------------------------------------------- *
+     * Presence — who's in the app right now (ephemeral realtime channel) *
+     * ---------------------------------------------------------------- */
+    var HEARTBEAT_MS = 4000, PRESENCE_TTL_MS = 12000, PRUNE_MS = 3000;
+    var presence = {};   // addr -> { name, ts }
+    var rt = null;
+    var enc = ("TextEncoder" in window) ? new TextEncoder() : null;
+    var dec = ("TextDecoder" in window) ? new TextDecoder() : null;
+
+    function initPresence() {
+      if (!wx.joinRealtimeChannel || !enc || !dec) return; // unsupported → feature off
+      try { rt = wx.joinRealtimeChannel(); } catch (e) { rt = null; }
+      if (!rt) return;
+      rt.setListener(function (bytes) {
+        try {
+          var msg = JSON.parse(dec.decode(bytes));
+          if (!msg || !msg.addr || msg.addr === wx.selfAddr) return;
+          if (msg.t === "hb") { presence[msg.addr] = { name: msg.name || msg.addr, ts: Date.now() }; renderPresence(); }
+          else if (msg.t === "bye") { delete presence[msg.addr]; renderPresence(); }
+        } catch (e) {}
+      });
+      beat();
+      setInterval(beat, HEARTBEAT_MS);
+      setInterval(prunePresence, PRUNE_MS);
+      window.addEventListener("pagehide", sayBye);
+      window.addEventListener("beforeunload", sayBye);
+    }
+    function rtSend(obj) { if (rt && enc) { try { rt.send(enc.encode(JSON.stringify(obj))); } catch (e) {} } }
+    function beat() {
+      presence[wx.selfAddr] = { name: wx.selfName || wx.selfAddr, ts: Date.now() };
+      rtSend({ t:"hb", addr:wx.selfAddr, name:wx.selfName || wx.selfAddr });
+      renderPresence();
+    }
+    function sayBye() { rtSend({ t:"bye", addr:wx.selfAddr }); }
+    function prunePresence() {
+      var now = Date.now(), changed = false;
+      Object.keys(presence).forEach(function (a) {
+        if (a !== wx.selfAddr && now - presence[a].ts > PRESENCE_TTL_MS) { delete presence[a]; changed = true; }
+      });
+      if (changed) renderPresence();
+    }
+    function initialsOf(name) {
+      var parts = String(name || "?").trim().split(/\s+/);
+      var s = (parts[0] ? parts[0][0] : "?") + (parts[1] ? parts[1][0] : "");
+      return s.toUpperCase();
+    }
+    function hueOf(addr) { var h = 0; for (var i = 0; i < addr.length; i++) h = (h * 31 + addr.charCodeAt(i)) % 360; return h; }
+    function renderPresence() {
+      var el = document.getElementById("presence");
+      if (!el) return;
+      var now = Date.now();
+      var people = Object.keys(presence)
+        .filter(function (a) { return a === wx.selfAddr || now - presence[a].ts <= PRESENCE_TTL_MS; })
+        .map(function (a) { return { addr:a, name:presence[a].name }; });
+      people.sort(function (x, y) {
+        if (x.addr === wx.selfAddr) return -1;
+        if (y.addr === wx.selfAddr) return 1;
+        return x.name.localeCompare(y.name);
+      });
+      if (!rt || people.length === 0) { el.innerHTML = ""; el.removeAttribute("title"); return; }
+      var shown = people.slice(0, 5);
+      var extra = people.length - shown.length;
+      var html = shown.map(function (p) {
+        var self = p.addr === wx.selfAddr;
+        return '<span class="pavatar' + (self ? " me" : "") + '" style="background:hsl(' + hueOf(p.addr) + ',55%,45%)">' + esc(initialsOf(p.name)) + "</span>";
+      }).join("");
+      if (extra > 0) html += '<span class="pavatar more">+' + extra + "</span>";
+      el.innerHTML = html;
+      el.title = people.length + " here now: " + people.map(function (p) { return p.name + (p.addr === wx.selfAddr ? " (you)" : ""); }).join(", ");
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Leader notification when a group of questions finishes scoring     *
+     * ---------------------------------------------------------------- */
+    function maybeAnnounceLeader(p) {
+      if (!p || p.type !== "question.resolve") return;
+      if (p.by !== wx.selfAddr) return;              // only the resolver announces (one sender)
+      var q = state.questions.get(p.id);
+      if (!q) return;
+      var complete, label;
+      if (isSeries()) {
+        var groupQs = [];
+        state.questions.forEach(function (qq) { if ((qq.round || "") === (q.round || "")) groupQs.push(qq); });
+        complete = groupQs.length > 0 && groupQs.every(function (x) { return x.resolved; });
+        label = q.round || "This round";
+      } else {
+        var all = [];
+        state.questions.forEach(function (qq) { all.push(qq); });
+        complete = all.length > 0 && all.every(function (x) { return x.resolved; });
+        label = "The event";
+      }
+      if (!complete) return;
+      var lb = leaderboard();
+      if (!lb.length || lb[0].points === 0) return;  // nobody on the board yet
+      var top = lb[0];
+      var leaders = lb.filter(function (r) { return r.points === top.points; });
+      var text = leaders.length > 1
+        ? "🏆 " + label + " all scored — it's a tie at " + top.points + " pts: " + leaders.map(function (l){ return l.name; }).join(", ")
+        : "🏆 " + label + " all scored — " + top.name + " leads with " + top.points + " pt" + (top.points === 1 ? "" : "s");
+      send({ type:"leader.announce", round:(q.round || ""), leader:top.name, points:top.points },
+        { info:text, summary:text, notify:text });
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Boot                                                             *
+     * ---------------------------------------------------------------- */
+    function onUpdate(update){
+      reduce(update.payload);
+      if (ui.caughtUp) { render(); maybeAnnounceLeader(update.payload); }
+    }
+    wx.setUpdateListener(onUpdate, 0).then(function (){ ui.caughtUp = true; render(); initPresence(); });
+  })();
+  </script>
+</body>
+</html>
