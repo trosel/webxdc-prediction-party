@@ -159,6 +159,10 @@
     .roster-emoji{font-size:20px; width:26px; text-align:center;}
     .empty{text-align:center; color:var(--muted); padding:40px 16px;}
     .empty .big{font-size:40px; margin-bottom:8px;}
+    .finale-card{text-align:center; padding:26px 16px; border-color:var(--accent); background:linear-gradient(180deg,var(--accent-soft),var(--card));}
+    .finale-card .big{font-size:50px; line-height:1; margin-bottom:4px;}
+    .finale-card .champ-names{font-size:23px; font-weight:800; margin:2px 0; color:var(--text);}
+    .finale-card .champ-cap{font-size:13px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em;}
     .note{background:var(--card-2); border-radius:10px; padding:12px; font-size:13px; color:var(--muted);}
     .center{text-align:center;}
     .spacer{height:8px;}
@@ -227,7 +231,7 @@
      * ---------------------------------------------------------------- */
     function freshState() {
       return {
-        season: { initialized:false, type:"series", show:"", season:"", emoji:"🎬", hosts:[], createdBy:null, createdAt:0 },
+        season: { initialized:false, type:"series", show:"", season:"", emoji:"🎬", hosts:[], createdBy:null, createdAt:0, finalized:false, finalizedAt:0 },
         contestants: new Map(), // id -> {id,name,emoji,note,status,order}
         questions: new Map(),   // id -> {id,prompt,kind,options,points,round,locked,lockTs,resolved,correct,order}
         predictions: new Map(), // qid -> Map<addr,{choice:[optId],at,name}>
@@ -280,6 +284,9 @@
         if (p.byName) rec.name = p.byName;
         state.players.set(p.by, rec);
       }
+      // Once finalized the season is frozen for everyone — only reopening (or a
+      // late name update above) gets through. Belt-and-suspenders with the UI.
+      if (state.season.finalized && p.type !== "season.reopen") return;
       switch (p.type) {
         case "season.init":
           if (state.season.initialized) break;
@@ -297,6 +304,16 @@
           if (p.show != null) state.season.show = p.show;
           if (p.season != null) state.season.season = p.season;
           if (p.emoji != null) state.season.emoji = p.emoji;
+          break;
+        case "season.finalize":
+          if (!isHost(p.by)) break;
+          state.season.finalized = true;
+          state.season.finalizedAt = p.at || Date.now();
+          break;
+        case "season.reopen":
+          if (!isHost(p.by)) break;
+          state.season.finalized = false;
+          state.season.finalizedAt = 0;
           break;
         case "host.add":
           if (!isHost(p.by) || !p.addr) break;
@@ -471,6 +488,31 @@
     }
     function resolvedCount(){ var n=0; state.questions.forEach(function(q){ if (q.resolved) n++; }); return n; }
 
+    /* Who's on top — the leader(s), handling ties. { none } when nobody scored. */
+    function championInfo() {
+      var lb = leaderboard();
+      if (!lb.length || lb[0].points === 0) return { none:true, leaders:[], points:0 };
+      var top = lb[0];
+      return { none:false, leaders:lb.filter(function (r){ return r.points === top.points; }), points:top.points };
+    }
+    // Celebratory champion card shown once a season is finalized.
+    function finaleBanner() {
+      var c = championInfo(), inner;
+      if (c.none) {
+        inner = '<div class="big">🏁</div><div class="champ-names">Season complete</div>' +
+          '<div class="hint">No points were scored this season.</div>';
+      } else if (c.leaders.length > 1) {
+        inner = '<div class="big">🏆</div><div class="champ-cap">Co-champions</div>' +
+          '<div class="champ-names">' + c.leaders.map(function (l){ return esc(l.name); }).join(" &amp; ") + "</div>" +
+          '<div class="hint">Tied at ' + c.points + " pts</div>";
+      } else {
+        inner = '<div class="big">🏆</div><div class="champ-cap">Season champion</div>' +
+          '<div class="champ-names">' + esc(c.leaders[0].name) + "</div>" +
+          '<div class="hint">' + c.points + " pt" + (c.points === 1 ? "" : "s") + "</div>";
+      }
+      return '<div class="card finale-card">' + inner + "</div>";
+    }
+
     /* Group questions by round (for series). Events use a single group. */
     function groupedQuestions(sortByStatus) {
       var byRound = {};
@@ -507,7 +549,9 @@
       document.getElementById("season-emoji").textContent = s.initialized ? s.emoji : "🎉";
       document.getElementById("season-title").textContent = s.initialized ? (s.show || "Prediction Party") : "Prediction Party";
       var subEl = document.getElementById("season-sub");
-      subEl.textContent = s.initialized && s.season ? s.season : "";
+      var subText = s.initialized && s.season ? s.season : "";
+      if (s.initialized && s.finalized) subText = (subText ? subText + " · " : "") + "🏁 Final";
+      subEl.textContent = subText;
       subEl.hidden = !subEl.textContent;            // drop empty subtitle so the row centers cleanly
       var tabsEl = document.getElementById("tabs");
       var view = document.getElementById("view");
@@ -586,7 +630,8 @@
         return emptyState("🔮", "No questions yet",
           meIsHost() ? "Open Manage to add your first prediction." : "The host hasn't added any predictions yet.");
       }
-      return renderGroups(true, questionCard);
+      var banner = state.season.finalized ? finaleBanner() : "";
+      return banner + renderGroups(true, questionCard);
     }
     function statusChip(q) {
       if (q.resolved) return '<span class="chip chip-resolved">✔ Resolved</span>';
@@ -610,7 +655,7 @@
       var mine = m && m.get(wx.selfAddr);
       var mySel = mine ? mine.choice : [];
       var optById = {}; q.options.forEach(function (o){ optById[o.id] = o; });
-      var open = !q.locked && !q.resolved;
+      var open = !q.locked && !q.resolved && !state.season.finalized;
       var inputType = q.kind === "multi" ? "checkbox" : "radio";
       var limit = q.kind === "multi" ? pickLimit(q) : 0;
       var atLimit = limit && mySel.length >= limit;
@@ -654,7 +699,9 @@
           " — fewer picks score more, so only add ones you're confident about.</div>";
         else if (!mine) note = '<div class="save-note muted">Make your prediction. You can change it until it locks.</div>';
       } else if (!q.resolved) {
-        note = '<p class="hint" style="margin-top:10px">🔒 Locked — waiting for the host to set the result.</p>';
+        note = state.season.finalized
+          ? '<p class="hint" style="margin-top:10px">🏁 Season ended — this one was left unresolved.</p>'
+          : '<p class="hint" style="margin-top:10px">🔒 Locked — waiting for the host to set the result.</p>';
       } else if (!rows.length) {
         note = '<p class="hint">No one predicted this one.</p>';
       }
@@ -668,7 +715,7 @@
       var mine = m && m.get(wx.selfAddr);
       var myOrder = mine ? mine.choice.slice() : [];
       var optById = {}; q.options.forEach(function (o){ optById[o.id] = o; });
-      var open = !q.locked && !q.resolved;
+      var open = !q.locked && !q.resolved && !state.season.finalized;
       var n = rankSlots(q);
       var html = "";
 
@@ -696,7 +743,9 @@
         }).join("");
         html = '<div class="section-label" style="margin:12px 4px 6px">Actual order</div><div class="opts">' + trueHtml + "</div>";
       } else {
-        html = '<p class="hint" style="margin-top:10px">🔒 Locked — waiting for the host to set the order.</p>';
+        html = state.season.finalized
+          ? '<p class="hint" style="margin-top:10px">🏁 Season ended — this one was left unresolved.</p>'
+          : '<p class="hint" style="margin-top:10px">🔒 Locked — waiting for the host to set the order.</p>';
       }
 
       var rows = [];
@@ -728,7 +777,9 @@
     function viewBoard() {
       var lb = leaderboard();
       var done = resolvedCount(), total = state.questions.size;
-      var header = '<div class="note center">' + done + " of " + total + " question" + (total === 1 ? "" : "s") + ' resolved</div><div class="spacer"></div>';
+      var header = state.season.finalized
+        ? finaleBanner() + '<div class="section-label">Final standings</div>'
+        : '<div class="note center">' + done + " of " + total + " question" + (total === 1 ? "" : "s") + ' resolved</div><div class="spacer"></div>';
       if (!lb.length) return header + emptyState("🏆", "No scores yet", "Scores appear once questions are resolved.");
       var rows = lb.map(function (r, i) {
         var medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : (i + 1);
@@ -747,23 +798,48 @@
       if (!meIsHost()) {
         return '<div class="note">Only the host can manage this season. Ask ' + esc(playerName(state.season.createdBy)) + " to add you as a co-host.</div>";
       }
-      return seasonSection() + questionsSection() + rosterSection() + hostsSection();
+      // When finalized the whole tab is read-only — lead with the reopen panel
+      // so the one available action is front and center.
+      return state.season.finalized
+        ? finaleSection() + seasonSection() + questionsSection() + rosterSection() + hostsSection()
+        : seasonSection() + questionsSection() + rosterSection() + hostsSection() + finaleSection();
+    }
+    // Series only: end the season, crown the champion, and freeze all picks.
+    // Events already close naturally when every question is resolved.
+    function finaleSection() {
+      if (!isSeries()) return "";
+      if (state.season.finalized) {
+        return '<div class="section-label">Season finale</div><div class="card finale-card" style="text-align:left;padding:16px">' +
+          '<p class="hint" style="margin-top:0">🏁 This season is finalized — everyone\'s picks are frozen and the final standings are locked in. Reopen if you need to keep playing or fix a result.</p>' +
+          '<div class="btn-row"><button class="btn btn-sm" data-act="reopen-season">Reopen season</button></div></div>';
+      }
+      var done = resolvedCount(), total = state.questions.size, left = total - done;
+      var warn = left > 0
+        ? '<strong>' + left + " question" + (left === 1 ? "" : "s") + " still unresolved</strong> — they'll be left without a result. "
+        : "";
+      return '<div class="section-label">Season finale</div><div class="card">' +
+        '<p class="hint" style="margin-top:0">End the season and crown the champion. ' + warn +
+        "This freezes everyone's picks and shows final standings to the whole group.</p>" +
+        '<div class="btn-row"><button class="btn btn-primary" data-act="finalize-season">🏆 Finish season &amp; crown champion</button></div></div>';
     }
     function seasonSection() {
       var kind = isSeries() ? "Recurring series" : "One-off event";
+      var editBtn = state.season.finalized ? "" :
+        '<div class="btn-row"><button class="btn btn-sm" data-act="edit-season">Edit name &amp; emoji</button></div>';
       return '<div class="section-label">Season</div>' +
         '<div class="card"><p class="hint" style="margin-top:0">Type: <strong>' + kind + "</strong></p>" +
-        '<div class="btn-row"><button class="btn btn-sm" data-act="edit-season">Edit name &amp; emoji</button></div></div>';
+        editBtn + "</div>";
     }
     function questionsSection() {
       var body = state.questions.size ? renderGroups(false, manageQuestionCard) : '<div class="note">No questions yet.</div>';
-      return '<div class="section-label">Questions</div>' +
-        '<button class="btn btn-primary btn-block" data-act="new-q">+ New question</button>' +
-        '<div class="spacer"></div>' + body;
+      var addBtn = state.season.finalized ? "" :
+        '<button class="btn btn-primary btn-block" data-act="new-q">+ New question</button><div class="spacer"></div>';
+      return '<div class="section-label">Questions</div>' + addBtn + body;
     }
     function manageQuestionCard(q) {
       var actions;
-      if (q.resolved) {
+      if (state.season.finalized) actions = "";   // read-only once the season's locked in
+      else if (q.resolved) {
         actions = '<button class="btn btn-sm" data-act="unresolve" data-id="' + q.id + '">Reopen result</button>' +
           '<button class="btn btn-sm btn-danger" data-act="del-q" data-id="' + q.id + '">Delete</button>';
       } else if (q.locked) {
@@ -774,10 +850,11 @@
           '<button class="btn btn-sm" data-act="lock" data-id="' + q.id + '">Lock picks</button>' +
           '<button class="btn btn-sm btn-danger" data-act="del-q" data-id="' + q.id + '">Delete</button>';
       }
+      var actionsRow = actions ? '<div class="btn-row" style="margin-top:12px">' + actions + "</div>" : "";
       return '<div class="card"><div class="q-head"><p class="q-prompt">' + esc(q.prompt) + "</p>" + statusChip(q) + "</div>" +
         '<div class="q-meta"><span class="pts">' + q.points + " pt" + (q.points === 1 ? "" : "s") + "</span>" +
         '<span class="hint" style="margin:0">' + q.options.length + " options · " + esc(q.kind) + "</span></div>" +
-        '<div class="btn-row" style="margin-top:12px">' + actions + "</div></div>";
+        actionsRow + "</div>";
     }
     function rosterSection() {
       var cs = []; state.contestants.forEach(function (c){ cs.push(c); }); cs.sort(byOrder);
@@ -785,34 +862,38 @@
       var hint = isSeries()
         ? 'An optional roster you can pull into question options with one tap. Mark people "out" as they\'re eliminated.'
         : "An optional shared list of names you can pull into question options with one tap.";
+      var fz = state.season.finalized;
       var list = cs.map(function (c) {
         var out = c.status === "out";
-        var outBtn = isSeries() ? '<button class="btn btn-sm" data-act="toggle-c" data-id="' + c.id + '">' + (out ? "Bring back" : "Mark out") + "</button>" : "";
+        var btns = fz ? "" :
+          ((isSeries() ? '<button class="btn btn-sm" data-act="toggle-c" data-id="' + c.id + '">' + (out ? "Bring back" : "Mark out") + "</button>" : "") +
+           '<button class="btn btn-sm" data-act="edit-c" data-id="' + c.id + '">Edit</button>' +
+           '<button class="btn btn-sm btn-danger" data-act="del-c" data-id="' + c.id + '">✕</button>');
         return '<div class="roster-row' + (out ? " out" : "") + '">' +
           '<span class="roster-emoji">' + (c.emoji ? esc(c.emoji) : "👤") + "</span>" +
           '<span class="r-name' + (out ? " out" : "") + '">' + esc(c.name) + "</span>" +
-          outBtn +
-          '<button class="btn btn-sm" data-act="edit-c" data-id="' + c.id + '">Edit</button>' +
-          '<button class="btn btn-sm btn-danger" data-act="del-c" data-id="' + c.id + '">✕</button></div>';
+          btns + "</div>";
       }).join("");
+      var addBtn = fz ? "" : '<div class="spacer"></div><button class="btn btn-sm" data-act="new-c">+ Add</button>';
       return '<div class="section-label">' + label + "</div><div class=\"card\">" +
         '<p class="hint" style="margin-top:0">' + hint + "</p>" +
         (list || '<p class="hint">No one added yet.</p>') +
-        '<div class="spacer"></div><button class="btn btn-sm" data-act="new-c">+ Add</button></div>';
+        addBtn + "</div>";
     }
     function hostsSection() {
+      var fz = state.season.finalized;
       var others = []; state.players.forEach(function (p, addr){ if (!isHost(addr)) others.push(addr); });
       var hostList = state.season.hosts.map(function (addr) {
-        var canRemove = addr !== state.season.createdBy;
+        var canRemove = !fz && addr !== state.season.createdBy;
         return '<div class="roster-row"><span class="roster-emoji">⭐</span>' +
           '<span class="r-name">' + esc(playerName(addr)) + (addr === state.season.createdBy ? " (creator)" : "") + "</span>" +
           (canRemove ? '<button class="btn btn-sm btn-danger" data-act="rm-host" data-addr="' + esc(addr) + '">Remove</button>' : "") + "</div>";
       }).join("");
-      var addCtl = others.length
+      var addCtl = fz ? "" : (others.length
         ? '<div class="inline" style="margin-top:10px"><select id="host-pick">' +
             others.map(function (a){ return '<option value="' + esc(a) + '">' + esc(playerName(a)) + "</option>"; }).join("") +
           '</select><button class="btn btn-sm" data-act="add-host">Add</button></div>'
-        : '<p class="hint">Co-hosts can be added once other members have opened the app.</p>';
+        : '<p class="hint">Co-hosts can be added once other members have opened the app.</p>');
       return '<div class="section-label">Hosts</div><div class="card">' + hostList + addCtl + "</div>";
     }
 
@@ -1017,6 +1098,18 @@
       editingQ = null; closeModal();
     }
 
+    function finalizeSeason() {
+      var c = championInfo();
+      var text;
+      if (c.none) text = "🏁 Season complete — no points were scored.";
+      else if (c.leaders.length > 1)
+        text = "🏆 Season complete — it's a tie at " + c.points + " pts: " + c.leaders.map(function (l){ return l.name; }).join(", ");
+      else
+        text = "🏆 Season complete — " + c.leaders[0].name + " is the champion with " + c.points + " pt" + (c.points === 1 ? "" : "s") + "!";
+      ui.tab = "board";  // drop everyone onto the final standings
+      send({ type:"season.finalize" }, { info:text, summary:text, notify:text });
+    }
+
     document.addEventListener("click", function (e) {
       var tab = e.target.closest && e.target.closest(".tab");
       if (tab) { ui.tab = tab.getAttribute("data-tab"); render(); return; }
@@ -1058,7 +1151,7 @@
         case "save-q": saveQuestion(); break;
         case "rank-toggle": {
           var rq = state.questions.get(el.getAttribute("data-qid"));
-          if (!rq || rq.locked || rq.resolved) break;
+          if (!rq || rq.locked || rq.resolved || state.season.finalized) break;
           var roid = el.getAttribute("data-oid");
           var rm = state.predictions.get(rq.id);
           var rmine = rm && rm.get(wx.selfAddr);
@@ -1074,7 +1167,7 @@
         }
         case "rank-clear": {
           var rcq = state.questions.get(el.getAttribute("data-qid"));
-          if (!rcq || rcq.locked || rcq.resolved) break;
+          if (!rcq || rcq.locked || rcq.resolved || state.season.finalized) break;
           send({ type:"prediction.set", qid:rcq.id, choice:[] });
           render();
           break;
@@ -1108,6 +1201,19 @@
         case "toggle-c": { var c = state.contestants.get(id); if (c) send({ type:"contestant.update", id:id, status:c.status === "out" ? "active" : "out" }); break; }
         case "del-c": confirmModal({ title:"Remove from roster?", body:"This won't change options on questions you already created.", confirmLabel:"Remove", danger:true,
           onConfirm:function (){ send({ type:"contestant.remove", id:id }); } }); break;
+        case "finalize-season": {
+          var ci = championInfo();
+          var body = ci.none
+            ? "No points have been scored yet, so there's no champion. "
+            : (ci.leaders.length > 1
+                ? "It's currently a tie at " + ci.points + " pts (" + ci.leaders.map(function (l){ return l.name; }).join(", ") + "). "
+                : ci.leaders[0].name + " is on top with " + ci.points + " pt" + (ci.points === 1 ? "" : "s") + ". ");
+          confirmModal({ title:"Finish the season?", body:body + "Everyone's picks freeze and the final standings are announced to the group. You can reopen later if you need to.",
+            confirmLabel:"🏆 Finish season", onConfirm:finalizeSeason });
+          break;
+        }
+        case "reopen-season": confirmModal({ title:"Reopen season?", body:"Picks unfreeze and the season goes back to active. The champion announcement stays in the chat history.", confirmLabel:"Reopen",
+          onConfirm:function (){ send({ type:"season.reopen" }, { info:"↩️ Season reopened — picks are live again." }); } }); break;
         case "add-host": { var sel = document.getElementById("host-pick"); if (sel && sel.value) send({ type:"host.add", addr:sel.value }); break; }
         case "rm-host": send({ type:"host.remove", addr:el.getAttribute("data-addr") }); break;
         case "close-modal": closeModal(); break;
@@ -1120,7 +1226,7 @@
       if (inp) {
         var qid = inp.getAttribute("data-qid");
         var q = state.questions.get(qid);
-        if (!q || q.locked || q.resolved) return;
+        if (!q || q.locked || q.resolved || state.season.finalized) return;
         var checked = [].slice.call(document.querySelectorAll('input[name="q_' + qid + '"]'))
           .filter(function (i){ return i.checked; }).map(function (i){ return i.value; });
         var lim = q.kind === "multi" ? pickLimit(q) : 0;
@@ -1252,13 +1358,60 @@
     }
 
     /* ---------------------------------------------------------------- *
+     * Confetti — a short celebratory burst when the champion is crowned  *
+     * ---------------------------------------------------------------- */
+    function launchConfetti() {
+      if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      if (document.getElementById("confetti-cv")) return;     // one burst at a time
+      var cv = document.createElement("canvas");
+      cv.id = "confetti-cv";
+      cv.style.cssText = "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:200;";
+      document.body.appendChild(cv);
+      var ctx = cv.getContext("2d");
+      function size(){ cv.width = window.innerWidth; cv.height = window.innerHeight; }
+      size();
+      window.addEventListener("resize", size);
+      var colors = ["#6d28d9", "#a78bfa", "#16a34a", "#d97706", "#dc2626", "#2563eb", "#db2777", "#fbbf24"];
+      var parts = [];
+      for (var i = 0; i < 150; i++) parts.push({
+        x: Math.random() * cv.width, y: -20 - Math.random() * cv.height * 0.6,
+        w: 6 + Math.random() * 6, h: 8 + Math.random() * 6, c: colors[(Math.random() * colors.length) | 0],
+        vy: 2.5 + Math.random() * 3.5, vx: -1.5 + Math.random() * 3,
+        rot: Math.random() * Math.PI, vr: -0.2 + Math.random() * 0.4, sway: Math.random() * Math.PI * 2
+      });
+      var start = Date.now(), DURATION = 4000;
+      function frame() {
+        var t = Date.now() - start;
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        ctx.globalAlpha = t > DURATION - 900 ? Math.max(0, (DURATION - t) / 900) : 1;
+        for (var k = 0; k < parts.length; k++) {
+          var p = parts[k];
+          p.sway += 0.05; p.x += p.vx + Math.sin(p.sway) * 0.7; p.y += p.vy; p.rot += p.vr;
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+          ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+          ctx.restore();
+        }
+        if (t < DURATION) requestAnimationFrame(frame);
+        else { window.removeEventListener("resize", size); cv.remove(); }
+      }
+      requestAnimationFrame(frame);
+    }
+
+    /* ---------------------------------------------------------------- *
      * Boot                                                             *
      * ---------------------------------------------------------------- */
     function onUpdate(update){
       reduce(update.payload);
-      if (ui.caughtUp) { render(); maybeAnnounceLeader(update.payload); }
+      if (ui.caughtUp) {
+        render();
+        maybeAnnounceLeader(update.payload);
+        if (update.payload && update.payload.type === "season.finalize") launchConfetti();
+      }
     }
-    wx.setUpdateListener(onUpdate, 0).then(function (){ ui.caughtUp = true; render(); initPresence(); });
+    wx.setUpdateListener(onUpdate, 0).then(function (){
+      ui.caughtUp = true; render(); initPresence();
+      if (state.season.finalized) launchConfetti();   // celebrate when opening a finished season
+    });
   })();
   </script>
 </body>

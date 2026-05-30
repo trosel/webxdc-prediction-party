@@ -63,6 +63,8 @@ When you start a season the app asks what you're predicting:
    built for high-trust groups.
 4. The host sets the result; points are awarded automatically and the
    **Leaderboard** updates for everyone.
+5. For a recurring series, the host taps **Finish season** when it's over to
+   freeze picks and crown the champion (reopenable if needed).
 
 The reducer enforces fairness deterministically: a prediction only counts if it
 was made before the host locked the question, and resolving freezes it.
