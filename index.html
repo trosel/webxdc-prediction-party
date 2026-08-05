@@ -236,7 +236,8 @@
         contestants: new Map(), // id -> {id,name,emoji,note,status,order}
         questions: new Map(),   // id -> {id,prompt,kind,options,points,round,locked,lockTs,resolved,correct,order}
         predictions: new Map(), // qid -> Map<addr,{choice:[optId],at,name}>
-        players: new Map()      // addr -> {addr,name}
+        players: new Map(),     // addr -> {addr,name}
+        announced: {}           // round label -> true once the host announced it
       };
     }
     var state = freshState();
@@ -398,6 +399,10 @@
           if (!isHost(p.by)) break;
           state.questions.delete(p.id);
           state.predictions.delete(p.id);
+          break;
+        case "round.announce":
+          if (!isHost(p.by)) break;
+          state.announced[p.round || ""] = true;
           break;
         case "prediction.set": {
           var qq = state.questions.get(p.qid); if (!qq) break;
@@ -866,7 +871,25 @@
       var body = state.questions.size ? renderGroups(false, manageQuestionCard) : '<div class="note">No questions yet.</div>';
       var addBtn = state.season.finalized ? "" :
         '<button class="btn btn-primary btn-block" data-act="new-q">+ New question</button><div class="spacer"></div>';
-      return '<div class="section-label">Questions</div>' + addBtn + body;
+      return '<div class="section-label">Questions</div>' + addBtn + announceCards() + body;
+    }
+    // One card per round the group hasn't been told about yet. Question adds
+    // are silent; the host taps Announce once the round's set is complete —
+    // that's the one chat line + notification. Rounds whose questions are all
+    // locked/resolved don't offer it (covers seasons predating this feature).
+    function announceCards() {
+      if (state.season.finalized) return "";
+      var html = "";
+      groupedQuestions(false).forEach(function (g) {
+        var key = isSeries() ? (g.round || "") : "";
+        if (state.announced[key]) return;
+        if (!g.questions.some(function (q){ return !q.locked && !q.resolved; })) return;
+        var n = g.questions.length;
+        html += '<div class="card" style="padding:12px 14px"><div class="inline" style="justify-content:space-between">' +
+          '<span class="hint" style="margin:0">' + (key ? esc(key) : "Questions") + " · " + n + " question" + (n === 1 ? "" : "s") + " — not announced yet</span>" +
+          '<button class="btn btn-sm btn-primary" data-act="announce-round" data-round="' + esc(key) + '">📣 Announce</button></div></div>';
+      });
+      return html;
     }
     function manageQuestionCard(q) {
       var actions;
@@ -1134,7 +1157,9 @@
       var pickN = kind === "multi" ? (parseInt(val("m-pickn"), 10) || 0) : 0;
       var expectN = kind === "multi" ? (parseInt(val("m-expectn"), 10) || 0) : 0;
       if (editingQ) send({ type:"question.update", id:editingQ.id, prompt:prompt, kind:kind, points:points, options:options, rankN:rankN, rankMode:rankMode, pickN:pickN, expectN:expectN, round:round });
-      else send({ type:"question.add", id:uid("q"), prompt:prompt, kind:kind, points:points, options:options, rankN:rankN, rankMode:rankMode, pickN:pickN, expectN:expectN, round:round }, { info:"📊 New prediction: " + prompt });
+      // Adding questions is silent — the host announces the whole round once
+      // it's fully built (see "announce-round"), instead of a line per question.
+      else send({ type:"question.add", id:uid("q"), prompt:prompt, kind:kind, points:points, options:options, rankN:rankN, rankMode:rankMode, pickN:pickN, expectN:expectN, round:round });
       editingQ = null; closeModal();
     }
     function saveContestant() {
@@ -1151,29 +1176,45 @@
         if (resolveOrder.length !== n) { showModalError("Set the full order — tap " + n + " option" + (n === 1 ? "" : "s") + " in order."); return; }
         var byId = {}; editingQ.options.forEach(function (o){ byId[o.id] = o; });
         var rlabels = resolveOrder.map(function (id){ return byId[id] ? byId[id].label : "?"; }).join(" › ");
-        send({ type:"question.resolve", id:editingQ.id, correct:resolveOrder.slice() }, { info:"✅ Result — " + editingQ.prompt + ": " + rlabels });
+        send({ type:"question.resolve", id:editingQ.id, correct:resolveOrder.slice() },
+          { info:"✅ " + rlabels + " — " + editingQ.prompt, summary:resolveSummary(editingQ) });
         editingQ = null; closeModal(); return;
       }
       var correct = [].slice.call(document.querySelectorAll("[data-resolve-opt]"))
         .filter(function (i){ return i.checked; }).map(function (i){ return i.value; });
       if (!correct.length) { showModalError("Pick at least one correct option."); return; }
       var labels = editingQ.options.filter(function (o){ return correct.indexOf(o.id) !== -1; }).map(function (o){ return o.label; }).join(", ");
-      send({ type:"question.resolve", id:editingQ.id, correct:correct }, { info:"✅ Result — " + editingQ.prompt + ": " + labels });
+      send({ type:"question.resolve", id:editingQ.id, correct:correct },
+        { info:"✅ " + labels + " — " + editingQ.prompt, summary:resolveSummary(editingQ) });
       editingQ = null; closeModal();
+    }
+    // Aggregate for the chat-list summary line. Series rounds get their own
+    // progress ("Episode 2 · 3/4"); events use the global count ("5/8
+    // resolved"). Called before the resolve event is reduced, hence the +1.
+    function resolveSummary(q) {
+      if (isSeries() && q.round) {
+        var tot = 0, done = 0;
+        state.questions.forEach(function (qq) {
+          if ((qq.round || "") !== q.round) return;
+          tot++; if (qq.resolved) done++;
+        });
+        return q.round + " · " + Math.min(done + 1, tot) + "/" + tot;
+      }
+      return Math.min(resolvedCount() + 1, state.questions.size) + "/" + state.questions.size + " resolved";
     }
 
     /* Quiet chat line when someone starts making picks — reminds the group the
      * app exists during long seasons. `info` only (no notify → no push), and at
      * most once per round per app-open: only a player's FIRST pick on a
      * question they hadn't answered yet gets the line. */
-    var announcedRounds = {};
+    var pickPinged = {};   // ui-local, NOT state.announced (the host's round announcements)
     function maybePickInfo(q) {
       var m = state.predictions.get(q.id);
       var mine = m && m.get(wx.selfAddr);
       if (mine && mine.choice.length) return null;          // just changing an existing pick
       var rkey = isSeries() ? (q.round || "") : "";
-      if (announcedRounds[rkey]) return null;               // already said so this session
-      announcedRounds[rkey] = true;
+      if (pickPinged[rkey]) return null;                    // already said so this session
+      pickPinged[rkey] = true;
       // Tally who's in for this round (any valid non-empty pick), counting us.
       var who = {};
       state.questions.forEach(function (qq) {
@@ -1183,21 +1224,31 @@
       });
       who[wx.selfAddr] = true;
       var n = Object.keys(who).length;
-      var label = (isSeries() && q.round) ? " on " + q.round : "";
-      return "🔮 " + (wx.selfName || wx.selfAddr) + " made a pick" + label +
-        " — " + n + " player" + (n === 1 ? "" : "s") + " in so far";
+      // Per the webxdc spec: info is a short event line (clients truncate at
+      // ~50 chars), while aggregates like a tally belong in summary (~20
+      // chars, shown beside the app icon in the chat).
+      return {
+        info: "🔮 " + (wx.selfName || wx.selfAddr) + " predicted" + ((isSeries() && q.round) ? " · " + q.round : ""),
+        summary: (isSeries() && q.round) ? q.round + " · " + n + " in" : n + " player" + (n === 1 ? "" : "s") + " in"
+      };
     }
 
     function finalizeSeason() {
       var c = championInfo();
-      var text;
-      if (c.none) text = "🏁 Season complete — no points were scored.";
-      else if (c.leaders.length > 1)
-        text = "🏆 Season complete — it's a tie at " + c.points + " pts: " + c.leaders.map(function (l){ return l.name; }).join(", ");
-      else
-        text = "🏆 Season complete — " + c.leaders[0].name + " is the champion with " + c.points + " pt" + (c.points === 1 ? "" : "s") + "!";
+      var text, brief;
+      if (c.none) {
+        text = "🏁 Season complete — no points were scored.";
+        brief = "🏁 Season over";
+      } else if (c.leaders.length > 1) {
+        // Names lead the info line so client truncation (~50 chars) keeps them.
+        text = "🏆 " + c.leaders.map(function (l){ return l.name; }).join(" & ") + " tie at " + c.points + " pts — season complete!";
+        brief = "🏆 Tie · " + c.points + " pts";
+      } else {
+        text = "🏆 " + c.leaders[0].name + " is the champion — " + c.points + " pt" + (c.points === 1 ? "" : "s") + "!";
+        brief = "🏆 " + c.leaders[0].name + " wins";
+      }
       ui.tab = "board";  // drop everyone onto the final standings
-      send({ type:"season.finalize" }, { info:text, summary:text, notify:text });
+      send({ type:"season.finalize" }, { info:text, summary:brief, notify:text });
     }
 
     document.addEventListener("click", function (e) {
@@ -1250,7 +1301,7 @@
           if (ri !== -1) order.splice(ri, 1);
           else { if (order.length >= rankSlots(rq)) break; order.push(roid); }
           var rinfo = order.length ? maybePickInfo(rq) : null;
-          send({ type:"prediction.set", qid:rq.id, choice:order }, rinfo ? { info:rinfo } : undefined);
+          send({ type:"prediction.set", qid:rq.id, choice:order }, rinfo || undefined);
           ui.savedFlash[rq.id] = true;
           setTimeout(function (){ ui.savedFlash[rq.id] = false; render(); }, 1600);
           render();
@@ -1276,7 +1327,7 @@
         case "lock": {
           var ql = state.questions.get(id);
           if (ql) confirmModal({ title:"Lock picks?", body:'No more predictions will be accepted for "' + ql.prompt + '".', confirmLabel:"Lock picks",
-            onConfirm:function (){ send({ type:"question.lock", id:id }, { info:"🔒 Locked: " + ql.prompt }); } });
+            onConfirm:function (){ send({ type:"question.lock", id:id }, { info:"🔒 Locked" + (ql.round ? " · " + ql.round : "") + ": " + ql.prompt }); } });
           break;
         }
         case "confirm-yes": { var fn = pendingConfirm; pendingConfirm = null; closeModal(); if (fn) fn(); break; }
@@ -1292,6 +1343,20 @@
         case "toggle-c": { var c = state.contestants.get(id); if (c) send({ type:"contestant.update", id:id, status:c.status === "out" ? "active" : "out" }); break; }
         case "del-c": confirmModal({ title:"Remove from roster?", body:"This won't change options on questions you already created.", confirmLabel:"Remove", danger:true,
           onConfirm:function (){ send({ type:"contestant.remove", id:id }); } }); break;
+        case "announce-round": {
+          var ar = el.getAttribute("data-round") || "";
+          var an = 0;
+          state.questions.forEach(function (qq){ if ((isSeries() ? (qq.round || "") : "") === ar) an++; });
+          var aText = ar
+            ? "📣 " + ar + " is open — " + an + " prediction" + (an === 1 ? "" : "s") + "!"
+            : "📣 Predictions are open — " + an + " question" + (an === 1 ? "" : "s") + "!";
+          var aSum = ar ? ar + " · open" : "Predictions open";
+          confirmModal({ title:"Announce " + (ar || "the questions") + "?",
+            body:"Everyone in the chat gets a notification that " + an + " question" + (an === 1 ? " is" : "s are") + " open for predictions. Do this once the round is fully built.",
+            confirmLabel:"📣 Announce",
+            onConfirm:function (){ send({ type:"round.announce", round:ar }, { info:aText, summary:aSum, notify:aText }); } });
+          break;
+        }
         case "finalize-season": {
           var ci = championInfo();
           var body = ci.none
@@ -1323,7 +1388,7 @@
         var lim = q.kind === "multi" ? pickLimit(q) : 0;
         if (lim && checked.length > lim) { inp.checked = false; return; } // enforce the cap
         var pinfo = checked.length ? maybePickInfo(q) : null;
-        send({ type:"prediction.set", qid:qid, choice:checked }, pinfo ? { info:pinfo } : undefined);
+        send({ type:"prediction.set", qid:qid, choice:checked }, pinfo || undefined);
         ui.savedFlash[qid] = true;
         setTimeout(function (){ ui.savedFlash[qid] = false; render(); }, 1600);
         render();
@@ -1453,8 +1518,11 @@
       var text = leaders.length > 1
         ? "🏆 " + label + " all scored — it's a tie at " + top.points + " pts: " + leaders.map(function (l){ return l.name; }).join(", ")
         : "🏆 " + label + " all scored — " + top.name + " leads with " + top.points + " pt" + (top.points === 1 ? "" : "s");
+      // summary is the ~20-char aggregate beside the app icon; the fuller text
+      // goes to the info line and the push notification.
+      var brief = leaders.length > 1 ? "🏆 Tie · " + top.points + " pts" : "🏆 " + top.name + " · " + top.points + " pts";
       send({ type:"leader.announce", round:(q.round || ""), leader:top.name, points:top.points },
-        { info:text, summary:text, notify:text });
+        { info:text, summary:brief, notify:text });
     }
 
     /* ---------------------------------------------------------------- *

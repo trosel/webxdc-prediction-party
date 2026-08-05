@@ -53,10 +53,14 @@ When you start a season the app asks what you're predicting:
 - **Presence** — the header shows stacked avatars of everyone who has the app
   open right now
 - **Quiet pick updates** — the first time someone makes a pick in a round, a
-  small info line lands in the chat ("🔮 Bob made a pick on Episode 4 — 3
-  players in so far"). No push notification, at most one line per person per
-  round per sitting — just enough to remind the group the game is on during
-  long seasons.
+  small info line lands in the chat ("🔮 Bob predicted · Episode 4") and the
+  app's chat summary updates to the running tally ("Episode 4 · 3 in"). No push
+  notification, at most one line per person per round per sitting — just
+  enough to remind the group the game is on during long seasons.
+- **Round announcements** — adding questions is silent. When a round's set is
+  fully built, the host taps **📣 Announce** and the group gets one
+  notification: "📣 Episode 5 is open — 6 predictions!" (Questions added to an
+  already-announced round stay silent.)
 - **Leader notifications** — when a round/episode is fully scored (or, for a
   one-off event, when every question is scored), the app fires a webxdc
   notification to the group announcing the current leader (e.g. "🏆 Episode 1
@@ -68,7 +72,8 @@ When you start a season the app asks what you're predicting:
    Start. They become the host.
 2. The host uses **Manage** to add questions (and optionally a roster of
    contestants/nominees that fills question options with one tap), and to add
-   co-hosts.
+   co-hosts. Once a round's questions are all in, the host taps **📣 Announce**
+   to notify the group that predictions are open.
 3. Everyone predicts on the **Predict** tab and can change picks until the
    host locks a question. Picks and tallies are shown openly — this app is
    built for high-trust groups.
