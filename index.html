@@ -274,6 +274,13 @@
       var n = q.pickN || 0;
       return (n >= 1 && n <= q.options.length) ? n : 0;
     }
+    // How many right answers the host expects on a "pick several" question.
+    // Sets where the hedge penalty starts; 1 (the default) is the classic
+    // conviction formula.
+    function expectAnswers(q) {
+      var n = q.expectN || 0;
+      return (n >= 1 && n <= q.options.length) ? n : 1;
+    }
 
     /* ---------------------------------------------------------------- *
      * Reducer                                                          *
@@ -346,7 +353,7 @@
           state.questions.set(p.id, {
             id:p.id, prompt:p.prompt||"", kind:p.kind||"single",
             options:normalizeOptions(p.kind, p.options), points:p.points||1,
-            rankN:p.rankN || 0, rankMode:(p.rankMode === "proximity" ? "proximity" : "exact"), pickN:p.pickN || 0, round:p.round||"", locked:false, lockTs:0, resolved:false, correct:[], order:p.at||state.questions.size
+            rankN:p.rankN || 0, rankMode:(p.rankMode === "proximity" ? "proximity" : "exact"), pickN:p.pickN || 0, expectN:p.expectN || 0, round:p.round||"", locked:false, lockTs:0, resolved:false, correct:[], order:p.at||state.questions.size
           });
           break;
         case "question.update": {
@@ -359,6 +366,7 @@
           if (p.rankN != null) q.rankN = p.rankN;
           if (p.rankMode != null) q.rankMode = p.rankMode;
           if (p.pickN != null) q.pickN = p.pickN;
+          if (p.expectN != null) q.expectN = p.expectN;
           if (p.round != null) q.round = p.round;
           break;
         }
@@ -461,9 +469,10 @@
       var hits = pred.choice.filter(function (o){ return q.correct.indexOf(o) !== -1; }).length;
       if (q.kind === "multi") {
         // Conviction scoring: each correct pick scores the points, and every
-        // option you select beyond the first costs 1 point (floored at 0).
+        // pick beyond the host's expected number of right answers costs 1
+        // point (floored at 0). With expectN=1 this is the classic formula.
         var picks = pred.choice.length;
-        var pts = picks > 0 ? Math.max(0, q.points * hits - (picks - 1)) : 0;
+        var pts = picks > 0 ? Math.max(0, q.points * hits - Math.max(0, picks - expectAnswers(q))) : 0;
         return { hits:hits, points:pts };
       }
       return { hits:hits, points:q.points * hits };
@@ -641,8 +650,14 @@
     }
     function questionCard(q) {
       var perEach = (q.kind === "multi" || q.kind === "rank") ? " each" : "";
-      var subhint = q.kind === "multi" ? (pickLimit(q) ? "up to " + pickLimit(q) + " · fewer = more" : "fewer picks = more")
-        : (q.kind === "rank" ? "rank " + rankSlots(q) + (q.rankMode === "proximity" ? " · closeness counts" : " in order") : "");
+      var subhint;
+      if (q.kind === "multi") {
+        var eN = expectAnswers(q), capN = pickLimit(q);
+        subhint = (eN > 1 ? "~" + eN + " right answers expected · extras cost 1" : "fewer picks = more") +
+          (capN ? " · up to " + capN : "");
+      } else {
+        subhint = q.kind === "rank" ? "rank " + rankSlots(q) + (q.rankMode === "proximity" ? " · closeness counts" : " in order") : "";
+      }
       var head = '<div class="q-head"><p class="q-prompt">' + esc(q.prompt) + "</p></div>" +
         '<div class="q-meta">' + statusChip(q) +
         '<span class="pts">' + q.points + " pt" + (q.points === 1 ? "" : "s") + perEach + "</span>" +
@@ -695,9 +710,25 @@
 
       var note = "";
       if (open) {
-        if (ui.savedFlash[q.id]) note = '<div class="save-note">Saved ✓ — change anytime until it locks</div>';
-        else if (q.kind === "multi") note = '<div class="save-note muted">' + mySel.length + " selected" + (limit ? " (up to " + limit + ")" : "") +
-          " — fewer picks score more, so only add ones you're confident about.</div>";
+        // Nudge a player who has picked fewer than the expected number of right
+        // answers — those picks are penalty-free, so stopping short is almost
+        // always unintended. (Under-picking is allowed, hence a nudge, not a block.)
+        var shortNote = "";
+        if (q.kind === "multi") {
+          var noteE = expectAnswers(q);
+          if (mySel.length && mySel.length < noteE) {
+            var more = noteE - mySel.length;
+            shortNote = '<div class="save-note" style="color:var(--warn)">⚠️ ' + mySel.length + " of ~" + noteE +
+              " picked — " + more + " more pick" + (more === 1 ? "" : "s") + " won't cost you anything.</div>";
+          }
+        }
+        if (ui.savedFlash[q.id]) note = '<div class="save-note">Saved ✓ — change anytime until it locks</div>' + shortNote;
+        else if (q.kind === "multi") {
+          note = '<div class="save-note muted">' + mySel.length + " selected" + (limit ? " (up to " + limit + ")" : "") +
+            (noteE > 1
+              ? " — about " + noteE + " should be right; picks beyond " + noteE + " cost 1 pt each.</div>"
+              : " — fewer picks score more, so only add ones you're confident about.</div>") + shortNote;
+        }
         else if (!mine) note = '<div class="save-note muted">Make your prediction. You can change it until it locks.</div>';
       } else if (!q.resolved) {
         note = state.season.finalized
@@ -971,15 +1002,46 @@
             '<option value="exact"' + (q && q.rankMode === "proximity" ? "" : " selected") + ">Exact position</option>" +
             '<option value="proximity"' + (q && q.rankMode === "proximity" ? " selected" : "") + ">Proximity (closeness counts)</option></select>" +
           '<p class="hint"><strong>Exact:</strong> each slot placed in the right spot scores the full points. <strong>Proximity:</strong> a slot loses 1 point for every place it\'s off (min 0), so make the points <strong>at least one less than the number of places</strong> (5 places → 4+ points) so closeness counts all the way down — only the worst-possible spot scores 0. (Total for the question is points × how many slots you rank.)</p></label>' +
+        '<label class="field" id="expectn-wrap"' + (kind === "multi" ? "" : ' style="display:none"') + '><span>Right answers you expect</span>' +
+          '<input type="number" id="m-expectn" min="1" max="50" value="' + (q && q.expectN ? q.expectN : 1) + '" style="width:140px" />' +
+          '<p class="hint">Best guess is fine — it just sets where the hedge penalty starts. Each correct pick scores the points; every pick <strong>beyond this number</strong> costs 1 point.</p></label>' +
         '<label class="field" id="pickn-wrap"' + (kind === "multi" ? "" : ' style="display:none"') + '><span>Pick cap (optional)</span>' +
           '<input type="number" id="m-pickn" min="1" max="50" value="' + (q && q.pickN ? q.pickN : "") + '" placeholder="no limit" style="width:140px" />' +
-          '<p class="hint">Scoring rewards conviction: each correct pick scores the points, and every selection beyond the first costs 1 point. Tip: set a cap, then make the points <strong>one less than the cap</strong> — a confident single pick earns full points and a max-size spray earns 0, so hedging always costs you.</p></label>' +
+          '<p class="hint">Hard limit on how many options a player may select.</p>' +
+          '<div class="note" id="multi-preview" style="margin-top:8px"></div></label>' +
         '<div id="opts-wrap"' + (kind === "boolean" ? ' style="display:none"' : "") + '>' +
           '<span class="section-label" style="margin-top:0">Options</span>' +
           '<div id="opt-rows">' + qDraftOptions.map(optEditRow).join("") + "</div>" +
           '<div class="btn-row"><button class="btn btn-sm" data-act="add-opt">+ Option</button>' +
           (state.contestants.size ? '<button class="btn btn-sm" data-act="fill-roster">Fill from roster</button>' : "") + "</div></div>" +
         modalActions("save-q"));
+      if (kind === "multi") updateMultiPreview();
+    }
+    // Live score preview for "pick several" — concrete numbers beat prose. The
+    // hedge penalty starts after the host's expected number of right answers,
+    // so the preview shows the intended play, a miss, and a hedge.
+    function updateMultiPreview() {
+      var el = document.getElementById("multi-preview");
+      if (!el) return;
+      var p = Math.max(1, parseInt(val("m-points"), 10) || 1);
+      var e = Math.max(1, parseInt(val("m-expectn"), 10) || 1);
+      var lines;
+      if (e === 1) {
+        lines = [
+          "1 pick, correct → <strong>" + p + "</strong>",
+          "2 picks, 1 correct → <strong>" + Math.max(0, p - 1) + "</strong> (hedge)"
+        ];
+      } else {
+        lines = [
+          e + " picks, all correct → <strong>" + (e * p) + "</strong>",
+          e + " picks, " + (e - 1) + " correct → <strong>" + ((e - 1) * p) + "</strong>",
+          (e + 1) + " picks, " + e + " correct → <strong>" + (e * p - 1) + "</strong> (hedge)"
+        ];
+      }
+      var warn = p < 2
+        ? '<div style="color:var(--warn);font-weight:600;margin-top:6px">⚠️ At 1 pt, a hedge pick that turns out correct adds nothing — use 2+ pts if your expected count might be low.</div>'
+        : "";
+      el.innerHTML = "<strong>Score preview</strong> (pts) · " + lines.join(" · ") + warn;
     }
     function optEditRow(o) {
       return '<div class="opt-edit-row" data-oid="' + o.id + '">' +
@@ -1070,8 +1132,9 @@
       var rankN = kind === "rank" ? (parseInt(val("m-rankn"), 10) || 0) : 0;
       var rankMode = kind === "rank" ? (val("m-rankmode") || "exact") : "exact";
       var pickN = kind === "multi" ? (parseInt(val("m-pickn"), 10) || 0) : 0;
-      if (editingQ) send({ type:"question.update", id:editingQ.id, prompt:prompt, kind:kind, points:points, options:options, rankN:rankN, rankMode:rankMode, pickN:pickN, round:round });
-      else send({ type:"question.add", id:uid("q"), prompt:prompt, kind:kind, points:points, options:options, rankN:rankN, rankMode:rankMode, pickN:pickN, round:round }, { info:"📊 New prediction: " + prompt });
+      var expectN = kind === "multi" ? (parseInt(val("m-expectn"), 10) || 0) : 0;
+      if (editingQ) send({ type:"question.update", id:editingQ.id, prompt:prompt, kind:kind, points:points, options:options, rankN:rankN, rankMode:rankMode, pickN:pickN, expectN:expectN, round:round });
+      else send({ type:"question.add", id:uid("q"), prompt:prompt, kind:kind, points:points, options:options, rankN:rankN, rankMode:rankMode, pickN:pickN, expectN:expectN, round:round }, { info:"📊 New prediction: " + prompt });
       editingQ = null; closeModal();
     }
     function saveContestant() {
@@ -1097,6 +1160,32 @@
       var labels = editingQ.options.filter(function (o){ return correct.indexOf(o.id) !== -1; }).map(function (o){ return o.label; }).join(", ");
       send({ type:"question.resolve", id:editingQ.id, correct:correct }, { info:"✅ Result — " + editingQ.prompt + ": " + labels });
       editingQ = null; closeModal();
+    }
+
+    /* Quiet chat line when someone starts making picks — reminds the group the
+     * app exists during long seasons. `info` only (no notify → no push), and at
+     * most once per round per app-open: only a player's FIRST pick on a
+     * question they hadn't answered yet gets the line. */
+    var announcedRounds = {};
+    function maybePickInfo(q) {
+      var m = state.predictions.get(q.id);
+      var mine = m && m.get(wx.selfAddr);
+      if (mine && mine.choice.length) return null;          // just changing an existing pick
+      var rkey = isSeries() ? (q.round || "") : "";
+      if (announcedRounds[rkey]) return null;               // already said so this session
+      announcedRounds[rkey] = true;
+      // Tally who's in for this round (any valid non-empty pick), counting us.
+      var who = {};
+      state.questions.forEach(function (qq) {
+        if ((isSeries() ? (qq.round || "") : "") !== rkey) return;
+        var mm = state.predictions.get(qq.id);
+        if (mm) mm.forEach(function (pred, addr) { if (pred.choice.length && validPred(qq, pred)) who[addr] = true; });
+      });
+      who[wx.selfAddr] = true;
+      var n = Object.keys(who).length;
+      var label = (isSeries() && q.round) ? " on " + q.round : "";
+      return "🔮 " + (wx.selfName || wx.selfAddr) + " made a pick" + label +
+        " — " + n + " player" + (n === 1 ? "" : "s") + " in so far";
     }
 
     function finalizeSeason() {
@@ -1160,7 +1249,8 @@
           var ri = order.indexOf(roid);
           if (ri !== -1) order.splice(ri, 1);
           else { if (order.length >= rankSlots(rq)) break; order.push(roid); }
-          send({ type:"prediction.set", qid:rq.id, choice:order });
+          var rinfo = order.length ? maybePickInfo(rq) : null;
+          send({ type:"prediction.set", qid:rq.id, choice:order }, rinfo ? { info:rinfo } : undefined);
           ui.savedFlash[rq.id] = true;
           setTimeout(function (){ ui.savedFlash[rq.id] = false; render(); }, 1600);
           render();
@@ -1232,7 +1322,8 @@
           .filter(function (i){ return i.checked; }).map(function (i){ return i.value; });
         var lim = q.kind === "multi" ? pickLimit(q) : 0;
         if (lim && checked.length > lim) { inp.checked = false; return; } // enforce the cap
-        send({ type:"prediction.set", qid:qid, choice:checked });
+        var pinfo = checked.length ? maybePickInfo(q) : null;
+        send({ type:"prediction.set", qid:qid, choice:checked }, pinfo ? { info:pinfo } : undefined);
         ui.savedFlash[qid] = true;
         setTimeout(function (){ ui.savedFlash[qid] = false; render(); }, 1600);
         render();
@@ -1247,12 +1338,20 @@
         if (rmw) rmw.style.display = e.target.value === "rank" ? "" : "none";
         var pw = document.getElementById("pickn-wrap");
         if (pw) pw.style.display = e.target.value === "multi" ? "" : "none";
+        var ew = document.getElementById("expectn-wrap");
+        if (ew) ew.style.display = e.target.value === "multi" ? "" : "none";
+        if (e.target.value === "multi") updateMultiPreview();
       }
       var optInput = e.target.closest && e.target.closest('.opts input, [data-resolve-opt]');
       if (optInput) {
         var group = optInput.closest(".opts") || optInput.closest(".modal");
         if (group) [].forEach.call(group.querySelectorAll(".opt"), function (lbl){ var i = lbl.querySelector("input"); if (i) lbl.classList.toggle("selected", i.checked); });
       }
+    });
+
+    // Keep the multi score preview live while the host tweaks points / cap.
+    document.addEventListener("input", function (e) {
+      if (e.target && (e.target.id === "m-points" || e.target.id === "m-pickn" || e.target.id === "m-expectn")) updateMultiPreview();
     });
 
     /* ---------------------------------------------------------------- *

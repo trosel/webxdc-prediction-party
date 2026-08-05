@@ -26,12 +26,18 @@ When you start a season the app asks what you're predicting:
 ### Question types
 
 - **Pick one** — "Who's voted out?", "Best Picture", "Which team is eliminated?"
-- **Pick several** — choose any number of options, scored with **conviction**: each correct
-  pick scores the question's points, and every option you select beyond the first costs
-  1 point (floored at 0). So `score = max(0, points × correct − (picks − 1))`. Committing to
-  one bold pick beats spraying, while still rewarding finding every correct answer when a
-  question worth ≥2 points has several. A hard pick cap is optional. (e.g. "who wins
-  immunity?" to hedge, or "pick the 2 who make the merge" to identify a set.)
+- **Pick several** — choose any number of options, scored with **conviction**.
+  The host says how many right answers they expect (a best guess is fine): each
+  correct pick scores the question's points, and every pick **beyond the
+  expected count** costs 1 point (floored at 0). So
+  `score = max(0, points × correct − max(0, picks − expected))`. Picking exactly
+  the expected set carries no penalty; hedging beyond it costs — conviction
+  beats spraying with nothing to tune. A hard pick cap is optional. (e.g. "who
+  wins immunity?" expects 1, "pick the 2 who make the merge" expects 2.) The
+  question editor shows a **live score preview** as you set points / expected /
+  cap, and warns at 1 pt — where a hedge pick that turns out correct adds
+  nothing. Players who stop short of the expected count get a nudge that their
+  remaining picks are penalty-free.
 - **Rank in order** — players order the options (e.g. "predict the final 3, in order",
   "finishing order of the remaining teams"). The host can limit how many slots to rank
   (e.g. top 3 from a larger pool) and choose a scoring mode:
@@ -46,6 +52,11 @@ When you start a season the app asks what you're predicting:
 
 - **Presence** — the header shows stacked avatars of everyone who has the app
   open right now
+- **Quiet pick updates** — the first time someone makes a pick in a round, a
+  small info line lands in the chat ("🔮 Bob made a pick on Episode 4 — 3
+  players in so far"). No push notification, at most one line per person per
+  round per sitting — just enough to remind the group the game is on during
+  long seasons.
 - **Leader notifications** — when a round/episode is fully scored (or, for a
   one-off event, when every question is scored), the app fires a webxdc
   notification to the group announcing the current leader (e.g. "🏆 Episode 1
